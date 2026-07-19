@@ -1,0 +1,128 @@
+'use client';
+
+import { useState } from 'react';
+
+type QueryResult = { query: string; engine: string; cited: boolean; competitorsCited: string[] };
+type EnginePresence = { engine: string; cited: number; total: number };
+type Report = {
+  score: number;
+  shareOfVoice: number;
+  perEngine: EnginePresence[];
+  results: QueryResult[];
+  gaps: QueryResult[];
+};
+
+const box = 'w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-[15px] outline-none focus:border-emerald-500';
+const ENGINE_LABEL: Record<string, string> = { perplexity: 'Perplexity', chatgpt: 'ChatGPT', gemini: 'Gemini', claude: 'Claude' };
+
+export default function GeoPage() {
+  const [domain, setDomain] = useState('');
+  const [brand, setBrand] = useState('');
+  const [queries, setQueries] = useState('');
+  const [competitors, setCompetitors] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
+
+  async function run() {
+    setErr(null);
+    setReport(null);
+    if (!domain.trim() || !queries.trim()) return setErr('הכניסו דומיין ולפחות שאילתה אחת.');
+    setBusy(true);
+    try {
+      const res = await fetch('/api/geo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          domain: domain.trim(),
+          brand: brand.trim() || undefined,
+          queries: queries.split('\n').map((q) => q.trim()).filter(Boolean),
+          competitors: competitors.split(/[\n,]/).map((c) => c.trim()).filter(Boolean),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'error');
+      setReport(json.report as Report);
+    } catch (e) {
+      setErr('שגיאה: ' + (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="max-w-[860px] mx-auto px-5 md:px-8 pt-10 pb-16">
+      <div className="mb-1 text-[13px] font-bold text-emerald-600">HELIX Rank</div>
+      <h1 className="text-[clamp(24px,4.5vw,36px)] font-extrabold tracking-tight mb-1">GEO Monitor</h1>
+      <p className="text-[var(--ink-secondary)] text-[15px] mb-6">
+        בודק אם מנועי ה-AI (ChatGPT · Gemini · Claude · Perplexity) מצטטים אותך — ואיפה אתה חסר.
+      </p>
+
+      <div className="space-y-3 mb-4">
+        <div className="grid grid-cols-2 gap-3">
+          <input className={box} dir="ltr" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" />
+          <input className={box} value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="שם המותג (אופציונלי)" />
+        </div>
+        <textarea className={box + ' min-h-[110px]'} value={queries} onChange={(e) => setQueries(e.target.value)} placeholder="שאילתות — אחת בכל שורה. למשל:&#10;מה הכלי הכי טוב ל-SEO בעברית&#10;איך מקדמים אתר ב-2026" />
+        <input className={box} value={competitors} onChange={(e) => setCompetitors(e.target.value)} placeholder="מתחרים (דומיינים/שמות, מופרד בפסיק)" />
+        <button onClick={run} disabled={busy} className="rounded-xl bg-emerald-600 text-white px-6 py-3 text-[15px] font-bold disabled:opacity-50">
+          {busy ? 'בודק מנועי AI…' : 'בדוק נוכחות ב-AI'}
+        </button>
+        {err && <p className="text-[14px] text-red-600">{err}</p>}
+      </div>
+
+      {report && (
+        <div className="space-y-5 mt-8">
+          <div className="grid grid-cols-2 gap-4">
+            <Stat label="Citation Score" value={`${report.score}`} suffix="/100" />
+            <Stat label="Share of Voice" value={`${Math.round(report.shareOfVoice * 100)}`} suffix="%" />
+          </div>
+
+          <div className="rounded-2xl border border-black/10 bg-white p-5">
+            <div className="text-[13px] font-semibold text-[var(--ink-secondary)] mb-2">נוכחות per-מנוע</div>
+            <div className="flex flex-wrap gap-2">
+              {report.perEngine.map((e) => (
+                <span key={e.engine} className="rounded-full bg-black/5 px-3 py-1 text-[13px] font-semibold">
+                  {ENGINE_LABEL[e.engine] ?? e.engine}: {e.cited}/{e.total}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-black/10 bg-white p-5">
+            <div className="text-[15px] font-bold mb-3">Gap Board — {report.gaps.length} פערים</div>
+            {report.gaps.length === 0 && <p className="text-[14px] text-[var(--ink-secondary)]">אין פערים — אתה מצוטט בכל השאילתות 🎉</p>}
+            <div className="space-y-2">
+              {report.gaps.map((g, i) => (
+                <div key={i} className="flex flex-wrap items-center justify-between gap-2 border-b border-black/5 pb-2">
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-semibold">{g.query}</div>
+                    <div className="text-[12px] text-[var(--ink-secondary)]">
+                      {ENGINE_LABEL[g.engine] ?? g.engine}
+                      {g.competitorsCited.length ? ` · מצוטט: ${g.competitorsCited.join(', ')}` : ' · אף אחד לא מצוטט'}
+                    </div>
+                  </div>
+                  <a href={`/write?keyword=${encodeURIComponent(g.query)}`} className="shrink-0 rounded-lg bg-black text-white px-3 py-1.5 text-[13px] font-semibold">
+                    כתוב patch
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function Stat({ label, value, suffix }: { label: string; value: string; suffix?: string }) {
+  return (
+    <div className="rounded-2xl border border-black/10 bg-white p-5">
+      <div className="text-[13px] font-semibold text-[var(--ink-secondary)] mb-1">{label}</div>
+      <div className="text-[32px] font-extrabold text-emerald-600">
+        {value}
+        {suffix && <span className="text-[16px] text-[var(--ink-secondary)]"> {suffix}</span>}
+      </div>
+    </div>
+  );
+}

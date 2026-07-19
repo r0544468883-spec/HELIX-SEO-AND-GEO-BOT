@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f7f8fa;
+  --ink: #0e1116;
+  --ink-secondary: #5b6472;
+  --brand: #10b981;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, "Segoe UI", Arial, sans-serif;
+}
