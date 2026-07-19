@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { publishToWordPress, type WpConfig } from '@/lib/publish/wordpress';
+import { publishTo } from '@/lib/publish';
 
 export const dynamic = 'force-dynamic';
 
-// Publish an article to WordPress. MVP: WP config passed in the request
-// (later: read from the site's stored site_connections).
+// Publish an article to any supported CMS (WordPress / Webflow / Wix / webhook).
+// MVP: cms type + config passed in the request.
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     title?: string;
@@ -12,17 +12,22 @@ export async function POST(req: Request) {
     meta?: string;
     schema_json?: unknown;
     status?: 'draft' | 'publish';
-    wp?: WpConfig;
+    cms?: string;
+    config?: Record<string, unknown>;
+    wp?: Record<string, unknown>; // backwards-compat
   };
   if (!body.title || !body.body_html) return NextResponse.json({ error: 'no_article' }, { status: 400 });
-  if (!body.wp) return NextResponse.json({ error: 'no_wp_config' }, { status: 400 });
+
+  const cms = body.cms ?? 'wordpress';
+  const config = body.config ?? body.wp;
+  if (!config) return NextResponse.json({ error: 'no_cms_config' }, { status: 400 });
 
   // Inline the JSON-LD schema so GEO structured data ships with the post.
   const schemaTag = body.schema_json
     ? `\n<script type="application/ld+json">${JSON.stringify(body.schema_json)}</script>`
     : '';
 
-  const res = await publishToWordPress(body.wp, {
+  const res = await publishTo(cms, config, {
     title: body.title,
     content_html: body.body_html + schemaTag,
     excerpt: body.meta,

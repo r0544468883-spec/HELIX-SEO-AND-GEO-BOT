@@ -3,6 +3,8 @@
 // GEO-aware: answer-first structure, FAQ, schema. Returns a publish-ready piece.
 import { claude, parseJson } from './claude';
 import { HEBREW_STYLE, humanizeHe } from './hebrew';
+import { runChecks, type CheckReport } from './seo/checks';
+import { generateImage } from './images';
 
 export type ArticleInput = {
   keyword: string;
@@ -10,6 +12,7 @@ export type ArticleInput = {
   context?: string; // business context
   intent?: string;
   notes?: string; // e.g. striking-distance action plan / FAQ to cover
+  withImage?: boolean; // generate a hero image (needs OPENAI_API_KEY)
 };
 
 export type Article = {
@@ -20,6 +23,7 @@ export type Article = {
   faq: { q: string; a: string }[];
   schema_json: unknown;
   lang: 'he' | 'en';
+  checks: CheckReport; // pre-publish quality gate (§3.8.11)
 };
 
 type Draft = {
@@ -97,13 +101,21 @@ export async function generateArticle(input: ArticleInput): Promise<Article | nu
     for (const f of draft.faq ?? []) f.a = await humanizeHe(f.a);
   }
 
-  return {
+  let body_html = renderHtml(draft);
+  // Optional hero image (opt-in; no-op without an image key).
+  if (input.withImage) {
+    const img = await generateImage(`Editorial hero image for an article titled "${draft.title}". Clean, modern, no text.`);
+    if (img) body_html = `<img src="${img}" alt="${draft.h1 || draft.title}" />\n${body_html}`;
+  }
+
+  const article = {
     title: draft.title,
     meta: draft.meta,
     h1: draft.h1 || draft.title,
-    body_html: renderHtml(draft),
+    body_html,
     faq: draft.faq ?? [],
     schema_json: buildSchema(draft),
     lang,
   };
+  return { ...article, checks: runChecks(article, input.keyword) };
 }

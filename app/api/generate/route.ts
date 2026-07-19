@@ -15,6 +15,7 @@ export async function POST(req: Request) {
     intent?: string;
     notes?: string;
     siteId?: string;
+    withImage?: boolean;
   };
   if (!body.keyword?.trim()) return NextResponse.json({ error: 'no_keyword' }, { status: 400 });
 
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
       context: body.context,
       intent: body.intent,
       notes: body.notes,
+      withImage: body.withImage,
     });
     if (!article) return NextResponse.json({ error: 'generation_failed' }, { status: 500 });
 

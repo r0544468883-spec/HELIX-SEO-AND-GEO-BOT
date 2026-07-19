@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 
+type CheckReport = { score: number; modes: { rankmath: number; yoast: number; hcu: number }; issues: { label: string; ok: boolean }[] };
 type Article = {
   title: string;
   meta: string;
@@ -10,6 +11,7 @@ type Article = {
   faq: { q: string; a: string }[];
   schema_json: unknown;
   lang: 'he' | 'en';
+  checks: CheckReport;
 };
 
 const box = 'w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-[15px] outline-none focus:border-emerald-500';
@@ -24,6 +26,7 @@ export default function WritePage() {
   const [context, setContext] = useState('');
   const [notes, setNotes] = useState('');
   const [lang, setLang] = useState<'he' | 'en'>('he');
+  const [withImage, setWithImage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [article, setArticle] = useState<Article | null>(null);
@@ -46,7 +49,7 @@ export default function WritePage() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ keyword, context, notes, lang }),
+        body: JSON.stringify({ keyword, context, notes, lang, withImage }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'error');
@@ -104,6 +107,10 @@ export default function WritePage() {
         </div>
         <input className={box} value={context} onChange={(e) => setContext(e.target.value)} placeholder="הקשר עסקי (אופציונלי) — חנות תכשיטים, ישראל בלבד" />
         <input className={box} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="הנחיות/תוכן לכסות (אופציונלי) — למשל תוכנית פעולה מ-Striking Distance" />
+        <label className="flex items-center gap-2 text-[14px]">
+          <input type="checkbox" checked={withImage} onChange={(e) => setWithImage(e.target.checked)} />
+          צור תמונת AI למאמר
+        </label>
         <button onClick={generate} disabled={busy} className="rounded-xl bg-emerald-600 text-white px-6 py-3 text-[15px] font-bold disabled:opacity-50">
           {busy ? 'כותב…' : 'כתוב מאמר'}
         </button>
@@ -120,6 +127,15 @@ export default function WritePage() {
             <div>
               <div className="text-[12px] font-semibold text-[var(--ink-secondary)]">Meta</div>
               <div className="text-[14px]">{article.meta}</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-t border-black/5 pt-3">
+              <span className={'rounded-full px-3 py-1 text-[13px] font-bold ' + (article.checks.score >= 80 ? 'bg-emerald-100 text-emerald-800' : article.checks.score >= 60 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800')}>
+                ציון SEO {article.checks.score}/100
+              </span>
+              <span className="text-[12px] text-[var(--ink-secondary)]">Rank Math {article.checks.modes.rankmath}% · Yoast {article.checks.modes.yoast}% · HCU {article.checks.modes.hcu}%</span>
+              {article.checks.issues.filter((i) => !i.ok).slice(0, 4).map((i, k) => (
+                <span key={k} className="rounded-full bg-black/5 px-2.5 py-0.5 text-[12px] text-[var(--ink-secondary)]">⚠ {i.label}</span>
+              ))}
             </div>
             <div>
               <div className="text-[12px] font-semibold text-[var(--ink-secondary)] mb-1">תצוגה מקדימה</div>
