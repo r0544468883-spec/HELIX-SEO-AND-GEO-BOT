@@ -24,6 +24,33 @@ export default function GeoPage() {
   const [err, setErr] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
 
+  // AI referral traffic (GA4)
+  const [propertyId, setPropertyId] = useState('');
+  const [tBusy, setTBusy] = useState(false);
+  const [tErr, setTErr] = useState<string | null>(null);
+  const [traffic, setTraffic] = useState<{ totalSessions: number; pages: { page: string; sessions: number; engaged: number; sources: string[] }[] } | null>(null);
+
+  async function runTraffic() {
+    setTErr(null);
+    setTraffic(null);
+    if (!propertyId.trim()) return setTErr('הכניסו GA4 Property ID.');
+    setTBusy(true);
+    try {
+      const res = await fetch('/api/ai-traffic', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ propertyId: propertyId.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'error');
+      setTraffic(json);
+    } catch (e) {
+      setTErr('שגיאה: ' + (e as Error).message);
+    } finally {
+      setTBusy(false);
+    }
+  }
+
   async function run() {
     setErr(null);
     setReport(null);
@@ -111,6 +138,34 @@ export default function GeoPage() {
           </div>
         </div>
       )}
+
+      {/* AI referral traffic (GA4) — the ROI half of GEO */}
+      <div className="mt-10 rounded-2xl border border-black/10 bg-white p-5">
+        <h2 className="text-[16px] font-bold mb-1">תנועה אמיתית ממנועי AI (GA4)</h2>
+        <p className="text-[13px] text-[var(--ink-secondary)] mb-3">
+          אילו עמודים מקבלים גולשים <b>מ-ChatGPT/Perplexity/Gemini/Claude</b>. דורש חיבור Google (אותו כפתור למעלה) + GA4 Property ID.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <input className={box + ' max-w-[240px]'} dir="ltr" value={propertyId} onChange={(e) => setPropertyId(e.target.value)} placeholder="GA4 Property ID (מספר)" />
+          <button onClick={runTraffic} disabled={tBusy} className="rounded-lg bg-black text-white px-4 py-2 text-[14px] font-semibold disabled:opacity-50">
+            {tBusy ? 'טוען…' : 'הצג תנועת AI'}
+          </button>
+        </div>
+        {tErr && <p className="text-[13px] text-red-600 mt-2">{tErr}</p>}
+        {traffic && (
+          <div className="mt-4">
+            <div className="text-[14px] font-semibold mb-2">{traffic.totalSessions.toLocaleString()} sessions מ-AI · {traffic.pages.length} עמודים</div>
+            <div className="space-y-1">
+              {traffic.pages.slice(0, 15).map((p, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 border-b border-black/5 py-1">
+                  <span className="text-[13px] truncate" dir="ltr">{p.page}</span>
+                  <span className="text-[12px] text-[var(--ink-secondary)] shrink-0">{p.sessions} · {p.sources.join(', ')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </main>
   );
 }

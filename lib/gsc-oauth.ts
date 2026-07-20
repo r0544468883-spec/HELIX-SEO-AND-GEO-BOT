@@ -1,5 +1,8 @@
-// Google Search Console OAuth — read-only Search Console access.
-const SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
+// Google OAuth — read-only Search Console + Analytics (GA4 AI-traffic).
+const SCOPE = [
+  'https://www.googleapis.com/auth/webmasters.readonly',
+  'https://www.googleapis.com/auth/analytics.readonly',
+].join(' ');
 
 export function buildAuthUrl(state = ''): string {
   const params = new URLSearchParams({
