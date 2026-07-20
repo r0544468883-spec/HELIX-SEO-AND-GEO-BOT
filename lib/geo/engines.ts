@@ -98,8 +98,15 @@ const ADAPTERS: Record<string, (q: string) => Promise<EngineAnswer>> = {
 
 export async function askEngine(engine: string, query: string): Promise<EngineAnswer> {
   const fn = ADAPTERS[engine];
-  if (!fn) throw new Error(`engine_not_supported_${engine}`);
-  return fn(query);
+  if (fn) return fn(query);
+  // Engines without a first-party API (Google AI Mode / Copilot / Grok) route
+  // through BrightData. Lazy import so the direct-API path stays dependency-free.
+  const { BRIGHTDATA_ENGINES, askBrightData } = await import('./brightdata');
+  if ((BRIGHTDATA_ENGINES as string[]).includes(engine)) return askBrightData(engine, query);
+  throw new Error(`engine_not_supported_${engine}`);
 }
 
+// Direct-API engines (always available). BrightData engines are opt-in and only
+// active when BRIGHT_DATA_KEY is set — see lib/geo/brightdata.ts.
 export const SUPPORTED_ENGINES = ['perplexity', 'chatgpt', 'gemini', 'claude'] as const;
+export const EXTENDED_ENGINES = ['ai_mode', 'copilot', 'grok'] as const;
