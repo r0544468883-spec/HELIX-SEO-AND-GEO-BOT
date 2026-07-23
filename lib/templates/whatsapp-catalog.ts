@@ -118,3 +118,8 @@ export function registrationPayload(def: TemplateDef, appUrl: string): Record<st
 export function allRegistrationPayloads(appUrl: string): Record<string, unknown>[] {
   return Object.values(TEMPLATES).map((d) => registrationPayload(d, appUrl));
 }
+
+/** Registration payloads for an explicit list of defs (built-in ∪ custom). */
+export function registrationPayloadsFor(defs: TemplateDef[], appUrl: string): Record<string, unknown>[] {
+  return defs.map((d) => registrationPayload(d, appUrl));
+}

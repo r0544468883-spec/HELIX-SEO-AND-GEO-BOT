@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createWhatsAppTemplate } from '@/lib/bot/channels';
-import { allRegistrationPayloads } from '@/lib/templates/whatsapp-catalog';
+import { registrationPayloadsFor } from '@/lib/templates/whatsapp-catalog';
+import { mergedWhatsAppTemplates } from '@/lib/templates/custom';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,8 +36,10 @@ export async function POST(request: NextRequest) {
   if (!cfg.access_token) return NextResponse.json({ error: 'whatsapp access_token missing in site_connections' }, { status: 400 });
   if (!cfg.waba_id) return NextResponse.json({ error: 'waba_id missing in site_connections credentials (add it to register templates)' }, { status: 400 });
 
+  // Register built-in ∪ this site's custom WhatsApp templates.
+  const merged = Object.values(await mergedWhatsAppTemplates(siteId));
   const results: { name: unknown; ok: boolean; status?: string; error?: string }[] = [];
-  for (const payload of allRegistrationPayloads(appUrl)) {
+  for (const payload of registrationPayloadsFor(merged, appUrl)) {
     const r = await createWhatsAppTemplate({ access_token: cfg.access_token }, cfg.waba_id, payload);
     results.push({ name: payload.name, ok: r.ok, status: r.status, error: r.error });
   }

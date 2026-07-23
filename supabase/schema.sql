@@ -142,6 +142,23 @@ create table if not exists channel_bindings (
   inbound_enabled boolean not null default false
 );
 
+-- Custom, user-uploaded templates — the site defines its OWN WhatsApp templates on
+-- top of (or in place of) the built-in catalog. `definition` holds the shape per kind
+-- (whatsapp: TemplateDef). A custom row with the same key as a built-in OVERRIDES it
+-- in the merged view.
+create table if not exists custom_templates (
+  id uuid primary key default gen_random_uuid(),
+  site_id uuid not null references sites(id) on delete cascade,
+  kind text not null,                                    -- 'whatsapp'
+  key text not null,                                     -- logical key (overrides a built-in with same key)
+  definition jsonb not null,                             -- the template shape (per kind)
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (site_id, kind, key)
+);
+create index if not exists idx_custom_tpl on custom_templates(site_id, kind, active);
+
 -- --- Advanced (later phases: §3.8 gap-closers, experiments) — add as needed ---
 -- experiments, site_issues, internal_links, backlinks, crawler_hits,
 -- prompt_volumes, ai_sentiment, content_decay, syndication_targets, channel_optin
@@ -162,6 +179,7 @@ alter table citation_gaps     enable row level security;
 alter table citation_scores   enable row level security;
 alter table reports           enable row level security;
 alter table channel_bindings  enable row level security;
+alter table custom_templates  enable row level security;
 
 do $$ begin
   create policy sites_own on sites for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
@@ -176,4 +194,5 @@ do $$ begin
   create policy cs_own    on citation_scores   for all using (owns_site(site_id)) with check (owns_site(site_id));
   create policy rep_own   on reports           for all using (owns_site(site_id)) with check (owns_site(site_id));
   create policy chan_own  on channel_bindings  for all using (owns_site(site_id)) with check (owns_site(site_id));
+  create policy ctpl_own  on custom_templates  for all using (owns_site(site_id)) with check (owns_site(site_id));
 exception when duplicate_object then null; end $$;
