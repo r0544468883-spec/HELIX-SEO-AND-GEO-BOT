@@ -17,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/geo" className="text-[var(--ink-secondary)] hover:text-black">GEO Monitor</a>
             <a href="/write" className="text-[var(--ink-secondary)] hover:text-black">כתיבה ופרסום</a>
             <a href="/sites" className="text-[var(--ink-secondary)] hover:text-black">האתרים שלי</a>
+            <a href="/templates" className="text-[var(--ink-secondary)] hover:text-black">תבניות</a>
           </div>
         </nav>
         {children}
