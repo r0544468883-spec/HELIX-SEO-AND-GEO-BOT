@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 type QueryResult = { query: string; engine: string; cited: boolean; competitorsCited: string[] };
 type EnginePresence = { engine: string; cited: number; total: number };
@@ -146,7 +146,9 @@ export default function GeoPage() {
       {report && (
         <div className="space-y-5 mt-8">
           <div className="grid grid-cols-2 gap-4">
-            <Stat label="Citation Score" value={`${report.score}`} suffix="/100" />
+            <div className="rounded-2xl border border-black/10 bg-white p-5 flex items-center justify-center">
+              <ScoreGauge label="Citation Score" value={report.score} max={100} />
+            </div>
             <Stat label="Share of Voice" value={`${Math.round(report.shareOfVoice * 100)}`} suffix="%" />
           </div>
 
@@ -258,6 +260,49 @@ export default function GeoPage() {
         )}
       </div>
     </main>
+  );
+}
+
+// Hero (HELIX Rank): the GEO/Citation score as an animated radial gauge — the
+// "money moment" that shows AI-engine visibility at a glance. SVG ring draws in +
+// number counts up, both honoring prefers-reduced-motion. No dependency.
+function ScoreGauge({ label, value, max }: { label: string; value: number; max: number }) {
+  const [t, setT] = useState(0); // 0..1 animation progress
+  const raf = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const reduce = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { setT(1); return; }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / 1000);
+      setT(1 - Math.pow(1 - p, 3)); // easeOutCubic
+      if (p < 1) raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => { if (raf.current) cancelAnimationFrame(raf.current); };
+  }, [value, max]);
+
+  const R = 46, C = 2 * Math.PI * R;
+  const pct = Math.max(0, Math.min(1, value / max));
+  const shown = Math.round(value * t);
+  const color = pct >= 0.7 ? '#059669' : pct >= 0.4 ? '#d97706' : '#dc2626';
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="relative" style={{ width: 120, height: 120 }}>
+        <svg width="120" height="120" viewBox="0 0 120 120" className="-rotate-90">
+          <circle cx="60" cy="60" r={R} fill="none" stroke="rgba(0,0,0,.08)" strokeWidth="10" />
+          <circle
+            cx="60" cy="60" r={R} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
+            strokeDasharray={C} strokeDashoffset={C * (1 - pct * t)}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-[30px] font-extrabold leading-none" style={{ color }}>{shown}</span>
+          <span className="text-[12px] text-[var(--ink-secondary)]">/{max}</span>
+        </div>
+      </div>
+      <div className="text-[13px] font-semibold text-[var(--ink-secondary)]">{label}</div>
+    </div>
   );
 }
 
