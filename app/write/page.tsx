@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 
 type CheckReport = { score: number; modes: { rankmath: number; yoast: number; hcu: number }; issues: { label: string; ok: boolean }[] };
+type GeoMethod = { id: string; label: string; ok: boolean; boost: number; detail: string };
+type GeoReport = { score: number; methods: GeoMethod[] };
 type Article = {
   title: string;
   meta: string;
@@ -12,7 +14,11 @@ type Article = {
   schema_json: unknown;
   lang: 'he' | 'en';
   checks: CheckReport;
+  geo: GeoReport;
 };
+
+const scoreColor = (n: number) =>
+  n >= 80 ? 'bg-emerald-100 text-emerald-800' : n >= 60 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800';
 
 const box = 'w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-[15px] outline-none focus:border-emerald-500';
 const label = 'block text-[13px] font-semibold mb-1';
@@ -129,13 +135,30 @@ export default function WritePage() {
               <div className="text-[14px]">{article.meta}</div>
             </div>
             <div className="flex flex-wrap items-center gap-2 border-t border-black/5 pt-3">
-              <span className={'rounded-full px-3 py-1 text-[13px] font-bold ' + (article.checks.score >= 80 ? 'bg-emerald-100 text-emerald-800' : article.checks.score >= 60 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800')}>
+              <span className={'rounded-full px-3 py-1 text-[13px] font-bold ' + scoreColor(article.checks.score)}>
                 ציון SEO {article.checks.score}/100
+              </span>
+              <span className={'rounded-full px-3 py-1 text-[13px] font-bold ' + scoreColor(article.geo.score)}>
+                ציון GEO {article.geo.score}/100
               </span>
               <span className="text-[12px] text-[var(--ink-secondary)]">Rank Math {article.checks.modes.rankmath}% · Yoast {article.checks.modes.yoast}% · HCU {article.checks.modes.hcu}%</span>
               {article.checks.issues.filter((i) => !i.ok).slice(0, 4).map((i, k) => (
                 <span key={k} className="rounded-full bg-black/5 px-2.5 py-0.5 text-[12px] text-[var(--ink-secondary)]">⚠ {i.label}</span>
               ))}
+            </div>
+
+            {/* Princeton GEO methods — what makes AI engines cite this article */}
+            <div className="border-t border-black/5 pt-3">
+              <div className="text-[12px] font-semibold text-[var(--ink-secondary)] mb-2">שיטות GEO (ציטוט ב-AI)</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {article.geo.methods.map((m) => (
+                  <div key={m.id} className="flex items-start gap-1.5 text-[13px]" title={m.detail}>
+                    <span className={m.ok ? 'text-emerald-600' : 'text-red-500'}>{m.ok ? '✓' : '✕'}</span>
+                    <span className="font-semibold">{m.label}</span>
+                    {!m.ok && <span className="text-[11px] text-[var(--ink-secondary)] truncate">— {m.detail}</span>}
+                  </div>
+                ))}
+              </div>
             </div>
             <div>
               <div className="text-[12px] font-semibold text-[var(--ink-secondary)] mb-1">תצוגה מקדימה</div>
