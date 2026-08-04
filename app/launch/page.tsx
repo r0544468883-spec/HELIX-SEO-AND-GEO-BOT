@@ -51,9 +51,9 @@ export default function LaunchPage() {
   return (
     <main className="max-w-[860px] mx-auto px-5 md:px-8 pt-10 pb-16">
       <div className="mb-1 text-[13px] font-bold text-emerald-600">HELIX Rank</div>
-      <h1 className="text-[clamp(24px,4.5vw,36px)] font-extrabold tracking-tight mb-1">צ׳קליסט השקה</h1>
+      <h1 className="text-[clamp(24px,4.5vw,36px)] font-extrabold tracking-tight mb-1">בדיקת תקינות אתר</h1>
       <p className="text-[var(--ink-secondary)] text-[15px] mb-6">
-        10 הבדיקות שעושים אחרי כל השקת אתר — בודקים אוטומטית מה שאפשר (sitemap · Analytics · noindex · robots · NAP · קישורים שבורים · מהירות · טפסים), ומסמנים מה דורש חיבור ידני.
+        10 בדיקות תקינות SEO טכניות — אפשר להריץ בכל שלב, לא רק בהשקה. בודקים אוטומטית מה שאפשר (sitemap · Analytics · noindex · robots · NAP · קישורים שבורים · מהירות · טפסים), ומסמנים מה דורש חיבור ידני.
       </p>
 
       <div className="flex flex-wrap gap-2 mb-4">

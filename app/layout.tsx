@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/" className="font-extrabold text-emerald-600">HELIX Rank</a>
             <a href="/" className="text-[var(--ink-secondary)] hover:text-black">GSC Intelligence</a>
             <a href="/geo" className="text-[var(--ink-secondary)] hover:text-black">GEO Monitor</a>
-            <a href="/launch" className="text-[var(--ink-secondary)] hover:text-black">צ׳קליסט השקה</a>
+            <a href="/launch" className="text-[var(--ink-secondary)] hover:text-black">בדיקת תקינות</a>
             <a href="/write" className="text-[var(--ink-secondary)] hover:text-black">כתיבה ופרסום</a>
             <a href="/sites" className="text-[var(--ink-secondary)] hover:text-black">האתרים שלי</a>
             <a href="/templates" className="text-[var(--ink-secondary)] hover:text-black">תבניות</a>
