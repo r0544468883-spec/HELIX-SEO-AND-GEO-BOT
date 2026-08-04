@@ -23,6 +23,11 @@ type AeoCheck = { id: string; label: string; category: 'discovery' | 'structure'
 type AeoReport = { url: string; score: number; checks: AeoCheck[] };
 const AEO_CAT_LABEL: Record<AeoCheck['category'], string> = { discovery: 'גילוי', structure: 'מבנה', content: 'תוכן' };
 
+// Entity Audit — how well AI knows a brand/person as an entity
+type EntityCheck = { id: string; label: string; category: 'identity' | 'sources' | 'linking'; pass: boolean; value: string; detail: string };
+type EntityReport = { name: string; score: number; qid?: string; wikipediaUrl?: string; notabilityReady: boolean; checks: EntityCheck[] };
+const ENTITY_CAT_LABEL: Record<EntityCheck['category'], string> = { identity: 'זהות', sources: 'מקורות סמכות', linking: 'קישור ישות' };
+
 export default function GeoPage() {
   const [domain, setDomain] = useState('');
   const [brand, setBrand] = useState('');
@@ -44,6 +49,34 @@ export default function GeoPage() {
   const [aBusy, setABusy] = useState(false);
   const [aErr, setAErr] = useState<string | null>(null);
   const [audit, setAudit] = useState<AeoReport | null>(null);
+
+  // Entity Audit
+  const [entName, setEntName] = useState('');
+  const [entDomain, setEntDomain] = useState('');
+  const [eBusy, setEBusy] = useState(false);
+  const [eErr, setEErr] = useState<string | null>(null);
+  const [entity, setEntity] = useState<EntityReport | null>(null);
+
+  async function runEntity() {
+    setEErr(null);
+    setEntity(null);
+    if (!entName.trim()) return setEErr('הכניסו שם מותג/אדם.');
+    setEBusy(true);
+    try {
+      const res = await fetch('/api/entity/audit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: entName.trim(), domain: entDomain.trim() || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'error');
+      setEntity(json.report as EntityReport);
+    } catch (e) {
+      setEErr('שגיאה: ' + (e as Error).message);
+    } finally {
+      setEBusy(false);
+    }
+  }
 
   async function runAudit() {
     setAErr(null);
@@ -239,6 +272,59 @@ export default function GeoPage() {
               return (
                 <div key={cat} className="mb-3">
                   <div className="text-[12px] font-bold text-[var(--ink-secondary)] mb-1">{AEO_CAT_LABEL[cat]}</div>
+                  <div className="space-y-1">
+                    {items.map((c) => (
+                      <div key={c.id} className="flex items-start justify-between gap-3 border-b border-black/5 pb-1.5">
+                        <div className="min-w-0">
+                          <div className="text-[14px] font-semibold flex items-center gap-1.5">
+                            <span className={c.pass ? 'text-emerald-600' : 'text-red-500'}>{c.pass ? '✓' : '✕'}</span>
+                            {c.label}
+                          </div>
+                          <div className="text-[12px] text-[var(--ink-secondary)]">{c.detail}</div>
+                        </div>
+                        <span className="text-[12px] font-semibold shrink-0 text-[var(--ink-secondary)]">{c.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Entity Audit — how well AI knows you as an entity (Wikidata/Wikipedia/sameAs) */}
+      <div className="mt-10 rounded-2xl border border-black/10 bg-white p-5">
+        <h2 className="text-[16px] font-bold mb-1">Entity Audit — כמה ה-AI מכיר אותך כישות</h2>
+        <p className="text-[13px] text-[var(--ink-secondary)] mb-3">
+          בודק אם קיים <b>פריט Wikidata</b>, <b>ערך ויקיפדיה</b> וקישור-ישות (<b>schema sameAs</b>) — השכבה שמזהה אותך כ<b>גורם</b>, לא רק אם עמוד מוכן לציטוט.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <input className={box + ' max-w-[240px]'} value={entName} onChange={(e) => setEntName(e.target.value)} placeholder="שם המותג / האדם" />
+          <input className={box + ' max-w-[240px]'} dir="ltr" value={entDomain} onChange={(e) => setEntDomain(e.target.value)} placeholder="example.com (אופציונלי)" />
+          <button onClick={runEntity} disabled={eBusy} className="rounded-lg bg-black text-white px-4 py-2 text-[14px] font-semibold disabled:opacity-50">
+            {eBusy ? 'בודק ישות…' : 'בדוק ישות'}
+          </button>
+        </div>
+        {eErr && <p className="text-[13px] text-red-600 mt-2">{eErr}</p>}
+        {entity && (
+          <div className="mt-4">
+            <div className="flex items-baseline gap-2 mb-1">
+              <span className="text-[32px] font-extrabold text-emerald-600">{entity.score}</span>
+              <span className="text-[14px] text-[var(--ink-secondary)]">/100 Entity Score</span>
+              {entity.qid && <a href={`https://www.wikidata.org/wiki/${entity.qid}`} target="_blank" rel="noreferrer" className="text-[12px] font-semibold text-emerald-700 underline">{entity.qid}</a>}
+            </div>
+            {entity.notabilityReady && (
+              <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[13px] text-amber-800">
+                מוכן ל-Notability — יש ישות מבוססת אך אין ערך ויקיפדיה. שווה להגיש דרך AfC (עם גילוי ניגוד-עניינים).
+              </div>
+            )}
+            {(['identity', 'sources', 'linking'] as const).map((cat) => {
+              const items = entity.checks.filter((c) => c.category === cat);
+              if (!items.length) return null;
+              return (
+                <div key={cat} className="mb-3">
+                  <div className="text-[12px] font-bold text-[var(--ink-secondary)] mb-1">{ENTITY_CAT_LABEL[cat]}</div>
                   <div className="space-y-1">
                     {items.map((c) => (
                       <div key={c.id} className="flex items-start justify-between gap-3 border-b border-black/5 pb-1.5">
