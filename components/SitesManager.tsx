@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createSiteAction, saveWpConnectionAction, saveGscConnectionAction } from '@/app/actions-site';
+import { createSiteAction, saveWpConnectionAction, saveGscConnectionAction, linkWhatsAppAction } from '@/app/actions-site';
 
 type Site = { id: string; url: string; cms_type: string | null; content_lang: string };
 type ContentRow = { id: string; title: string | null; status: string; published_url: string | null };
@@ -19,6 +19,9 @@ export default function SitesManager({ sites, content }: { sites: Site[]; conten
   const [wpUrl, setWpUrl] = useState('');
   const [wpUser, setWpUser] = useState('');
   const [wpPass, setWpPass] = useState('');
+
+  // WhatsApp linking (for the selected site)
+  const [waPhone, setWaPhone] = useState('');
 
   async function addSite() {
     if (!url.trim()) return setMsg('הכניסו כתובת אתר.');
@@ -40,6 +43,17 @@ export default function SitesManager({ sites, content }: { sites: Site[]; conten
     if (!selected) return setMsg('בחרו אתר.');
     const res = await saveGscConnectionAction(selected);
     setMsg('error' in res && res.error ? 'שגיאה: ' + res.error + ' (חברו GSC קודם במסך הראשי)' : 'GSC נשמר לאתר ✓');
+  }
+
+  async function linkWa() {
+    if (!selected) return setMsg('בחרו אתר.');
+    if (!waPhone.trim()) return setMsg('הכניסו מספר WhatsApp.');
+    const res = await linkWhatsAppAction(selected, waPhone.trim());
+    if ('error' in res && res.error) {
+      const m = res.error === 'bad_phone' ? 'מספר לא תקין — כתבו כולל קידומת מדינה (למשל 972501234567).' : 'שגיאה: ' + res.error;
+      return setMsg(m);
+    }
+    setMsg('מספר ה-WhatsApp קושר ✓ שלחו הודעה לבוט וקבלו נתונים אמיתיים.');
   }
 
   return (
@@ -74,6 +88,24 @@ export default function SitesManager({ sites, content }: { sites: Site[]; conten
           <div className="flex gap-2">
             <button onClick={saveWp} className="rounded-lg bg-black text-white px-4 py-2 text-[14px] font-semibold">שמור WordPress</button>
             <button onClick={saveGsc} className="rounded-lg bg-black/5 text-[var(--ink-secondary)] px-4 py-2 text-[14px] font-semibold">שמור GSC לאתר</button>
+          </div>
+
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-50/50 p-4 space-y-2">
+            <h3 className="text-[15px] font-bold">קישור WhatsApp 🟢</h3>
+            <p className="text-[13px] text-[var(--ink-secondary)]">
+              קשרו את מספר ה-WhatsApp שלכם לאתר הנבחר, וכשתשלחו הודעה לבוט (״דירוגים״, ״הזדמנויות״, ״כתוב מאמר על…״) הוא יענה עם הנתונים האמיתיים של האתר.
+            </p>
+            <div className="grid grid-cols-[1fr_auto] gap-3">
+              <input
+                className={box}
+                dir="ltr"
+                type="tel"
+                value={waPhone}
+                onChange={(e) => setWaPhone(e.target.value)}
+                placeholder="972501234567"
+              />
+              <button onClick={linkWa} className="rounded-lg bg-emerald-600 text-white px-4 py-2 text-[14px] font-bold">קשר מספר</button>
+            </div>
           </div>
         </section>
       )}
