@@ -4,6 +4,7 @@
 import { claude, parseJson } from './claude';
 import { HEBREW_STYLE, humanizeHe } from './hebrew';
 import { runChecks, type CheckReport } from './seo/checks';
+import { scoreGeoMethods, type GeoReport } from './seo/geo-methods';
 import { generateImage } from './images';
 
 export type ArticleInput = {
@@ -24,6 +25,7 @@ export type Article = {
   schema_json: unknown;
   lang: 'he' | 'en';
   checks: CheckReport; // pre-publish quality gate (§3.8.11)
+  geo: GeoReport; // Princeton 9-method GEO score (AI-citation readiness)
 };
 
 type Draft = {
@@ -41,10 +43,12 @@ async function draftArticle(input: ArticleInput): Promise<Draft | null> {
   const notes = input.notes ? `הנחיות/תוכן לכסות: ${input.notes}. ` : '';
   const system = he
     ? `אתה כותב תוכן SEO+GEO מומחה. כתוב מאמר מקיף (1500+ מילים) על מילת המפתח. ${ctx}${notes}
-מבנה answer-first: כל כותרת H2 = שאלה אמיתית, ו-40-60 המילים הראשונות עונות עליה תשובה מלאה ועצמאית (מנצח featured snippet וגם ציטוט AI). טענה אחת למשפט, עובדתי. ${HEBREW_STYLE}
+מבנה answer-first: כל כותרת H2 = שאלה אמיתית, ו-40-60 המילים הראשונות עונות עליה תשובה מלאה ועצמאית (מנצח featured snippet וגם ציטוט AI). טענה אחת למשפט, עובדתי.
+שיטות GEO (פרינסטון) — חובה כדי שמנועי AI יצטטו אותך: שלב סטטיסטיקות ומספרים ספציפיים; ייחס טענות למקורות ("לפי...", "מחקר של..."); הוסף לפחות ציטוט מומחה אחד מיוחס בשם; טון סמכותי בלי מילות היסוס; משפטים קצרים; אל תדחוס את מילת המפתח (מתחת ל-3%). ${HEBREW_STYLE}
 החזר JSON בלבד: {"title":"","meta":"תיאור מטא עד 155 תווים","h1":"","sections":[{"h2":"","body":"פסקאות טקסט (לא HTML)"}],"faq":[{"q":"","a":"תשובה 40-60 מילים"}]}`
     : `You are an expert SEO+GEO content writer. Write a comprehensive 1500+ word article on the keyword. ${input.context ? 'Business context: ' + input.context + '. ' : ''}${input.notes ? 'Cover: ' + input.notes + '. ' : ''}
 Answer-first: each H2 is a real question, answered fully in the first 40-60 words. One claim per sentence.
+GEO methods (Princeton) — required for AI citation: include specific statistics/numbers; attribute claims to sources ("according to..."); add at least one attributed expert quote; authoritative tone, no hedging; short sentences; do NOT stuff the keyword (under 3%).
 Return ONLY JSON: {"title":"","meta":"under 155 chars","h1":"","sections":[{"h2":"","body":"paragraphs, not HTML"}],"faq":[{"q":"","a":"40-60 word answer"}]}`;
   const raw = await claude(system, `Keyword: "${input.keyword}"${input.intent ? ' (intent: ' + input.intent + ')' : ''}`, 4000);
   return parseJson<Draft>(raw);
@@ -117,5 +121,9 @@ export async function generateArticle(input: ArticleInput): Promise<Article | nu
     schema_json: buildSchema(draft),
     lang,
   };
-  return { ...article, checks: runChecks(article, input.keyword) };
+  return {
+    ...article,
+    checks: runChecks(article, input.keyword),
+    geo: scoreGeoMethods(article.body_html, input.keyword),
+  };
 }

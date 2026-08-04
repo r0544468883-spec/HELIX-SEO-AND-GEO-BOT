@@ -32,8 +32,10 @@ async function tryFetch(url: string): Promise<{ ok: boolean; text: string; statu
   }
 }
 
-// The AI crawlers that matter for answer-engine visibility.
-const AI_BOTS = ['gptbot', 'chatgpt-user', 'claudebot', 'anthropic-ai', 'google-extended', 'googleother', 'perplexitybot', 'ccbot', 'cohere-ai', 'bytespider'];
+// The AI crawlers that matter for answer-engine visibility (2026 list).
+// NB: OAI-SearchBot is SEPARATE from GPTBot — a site can block GPTBot (training)
+// yet must keep OAI-SearchBot + ChatGPT-User open or ChatGPT search won't cite it.
+const AI_BOTS = ['gptbot', 'oai-searchbot', 'chatgpt-user', 'claudebot', 'anthropic-ai', 'claude-web', 'google-extended', 'googleother', 'perplexitybot', 'perplexity-user', 'ccbot', 'mistralai-user', 'applebot-extended', 'meta-externalagent', 'cohere-ai', 'bytespider'];
 
 export async function auditAeo(url: string): Promise<AeoReport> {
   const origin = new URL(url).origin;
