@@ -124,7 +124,7 @@ export function buildDiff(today: Snapshot, prev: Snapshot | null): Diff {
 // action, not just findings.
 export type ActActions = {
   quickWinsQueued: { query: string; url: string; position: number; impressions: number | null }[];
-  newPage: { query: string; status: 'approved' | 'draft' | 'skipped'; gateScore: number | null; reason?: string } | null;
+  newPage: { query: string; status: 'approved' | 'draft' | 'skipped' | 'published'; gateScore: number | null; reason?: string } | null;
 };
 
 // Compose the ≤15-line Hebrew readout. Honesty rule: never drop a "לא נמדד"

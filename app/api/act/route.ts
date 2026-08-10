@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   if (!admin) return NextResponse.json({ error: 'no_admin_client' }, { status: 500 });
 
   const only = url.searchParams.get('site');
-  let q = admin.from('sites').select('id, url, content_lang');
+  let q = admin.from('sites').select('id, url, content_lang, cms_type');
   if (only) q = q.eq('id', only);
   const { data: sites, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   const results: ActSummary[] = [];
   for (const s of sites ?? []) {
     try {
-      results.push(await runActLoop(admin, s as { id: string; url: string; content_lang?: string }));
+      results.push(await runActLoop(admin, s as { id: string; url: string; content_lang?: string; cms_type?: string | null }));
     } catch (e) {
       results.push({
         site: (s as { url: string }).url,

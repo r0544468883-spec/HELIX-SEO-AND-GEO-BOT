@@ -7,6 +7,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchSearchAnalytics, type GscRow } from '../gsc';
 import { analyze as buildQuickWinPlans } from '../striking-distance';
 import { generateArticle } from '../content-engine';
+import { publishTo } from '../publish';
+import { getConnection } from '../db';
+import { resolveMode } from '../autonomy/resolve';
+import { adminStore } from '../autonomy/store';
 import {
   buildDiff,
   composeReadout,
@@ -91,7 +95,7 @@ export type ActSummary = {
   site: string;
   date: string;
   quickWins: number;
-  newPage: 'approved' | 'draft' | 'skipped' | 'none';
+  newPage: 'approved' | 'draft' | 'skipped' | 'published' | 'none';
   degraded: string[];
   readout: string;
 };
@@ -99,7 +103,7 @@ export type ActSummary = {
 // Run one site's daily loop. `admin` is the service-role client (cron has no session).
 export async function runActLoop(
   admin: SupabaseClient,
-  site: { id: string; url: string; content_lang?: string }
+  site: { id: string; url: string; content_lang?: string; cms_type?: string | null }
 ): Promise<ActSummary> {
   const lang: 'he' | 'en' = site.content_lang === 'en' ? 'en' : 'he';
   const today = await captureSnapshot(admin, site.id, site.url);
@@ -165,15 +169,42 @@ export async function runActLoop(
         // content stays a draft — edited, unverified — never auto-published.
         const passed = article.checks.score >= GATE_THRESHOLD;
         const status: 'approved' | 'draft' = passed ? 'approved' : 'draft';
-        await admin.from('content_pieces').insert({
+        const { data: piece } = await admin.from('content_pieces').insert({
           site_id: site.id,
           title: article.title,
           body: article.body_html,
           schema_json: article.schema_json,
           lang: article.lang,
           status,
-        });
+        }).select('id').single();
         actions.newPage = { query: cand.query, status, gateScore: article.checks.score };
+
+        // Autonomy switch (rank.publish, outbound): the act loop historically NEVER
+        // published live. It now can — but ONLY when a passing article meets an
+        // explicit rank.publish=autopilot opt-in (risk_ack; the guard downgrades
+        // otherwise) and the site has a connected CMS. Otherwise it stays 'approved'
+        // (ready to publish) exactly as before — no regression, no surprise go-live.
+        if (passed && piece?.id && site.cms_type) {
+          const pubMode = await resolveMode(adminStore(admin), site.id, 'rank.publish');
+          if (pubMode === 'autopilot') {
+            const cfg = await getConnection(site.id, site.cms_type);
+            if (cfg) {
+              const res = await publishTo(site.cms_type, cfg as Record<string, unknown>, {
+                title: article.title,
+                content_html: article.body_html,
+                status: 'publish',
+              });
+              if (res.ok) {
+                await admin.from('content_pieces').update({
+                  status: 'published',
+                  published_url: res.url ?? null,
+                  published_at: new Date().toISOString(),
+                }).eq('id', piece.id);
+                actions.newPage = { query: cand.query, status: 'published', gateScore: article.checks.score };
+              }
+            }
+          }
+        }
       }
     }
   } else if (diff.newPageQuery.measured) {
