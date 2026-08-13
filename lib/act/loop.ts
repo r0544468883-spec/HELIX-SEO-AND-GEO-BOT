@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchSearchAnalytics, type GscRow } from '../gsc';
 import { analyze as buildQuickWinPlans } from '../striking-distance';
-import { generateArticle } from '../content-engine';
+import { runContentDepartment } from '../agents/rank/department-chief';
 import { publishTo } from '../publish';
 import { getConnection } from '../db';
 import { resolveMode } from '../autonomy/resolve';
@@ -18,10 +18,11 @@ import {
   type ActActions,
 } from './engine';
 
-// The content quality gate (lib/seo/checks.ts, embedded in generateArticle):
-// an article scoring below this stays a draft — the SaaS analog of seo-god's
-// "restore the batch, mark edited-unverified" when the build gate is red.
-const GATE_THRESHOLD = 70;
+// The content quality gate is now the adversarial Critic inside the Rank agent
+// department (lib/agents/rank/*), not a bare mechanical score. runContentDepartment
+// runs Researcher → Maker → Critic and returns `approved` (Critic pass + a
+// mechanical floor). A failing/absent Critic keeps the piece a draft — the SaaS
+// analog of seo-god's "restore the batch, mark edited-unverified" on a red gate.
 
 function localDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -161,14 +162,33 @@ export async function runActLoop(
         site_id: site.id, type: 'question_gap', query: cand.query, urls: [], impressions: cand.impressions, priority: 2, status: 'open',
       });
     } else {
-      const article = await generateArticle({ keyword: cand.query, lang, context: site.url, notes: `ביקוש: ${cand.impressions} חשיפות ב-GSC ללא עמוד ייעודי` }).catch(() => null);
-      if (!article) {
+      // Existing pages feed the Researcher — internal links + cannibalization.
+      const { data: existing } = await admin
+        .from('content_pieces')
+        .select('title')
+        .eq('site_id', site.id)
+        .limit(200);
+      const existingPages = (existing ?? []).map((p) => ({ title: p.title as string }));
+
+      const run = await runContentDepartment({
+        keyword: cand.query,
+        lang,
+        context: site.url,
+        notes: `ביקוש: ${cand.impressions} חשיפות ב-GSC ללא עמוד ייעודי`,
+        existingPages,
+      }).catch(() => null);
+
+      if (!run || !run.article) {
         actions.newPage = { query: cand.query, status: 'skipped', gateScore: null, reason: 'יצירת התוכן נכשלה' };
       } else {
-        // The gate: passing content is queued approved (ready to publish); failing
-        // content stays a draft — edited, unverified — never auto-published.
-        const passed = article.checks.score >= GATE_THRESHOLD;
-        const status: 'approved' | 'draft' = passed ? 'approved' : 'draft';
+        const { article, review, approved } = run;
+        // The gate is the Critic: approved content is queued ready-to-publish;
+        // anything the Critic rejected/revised — or an absent Critic — stays a
+        // draft (edited, unverified), never auto-published.
+        const status: 'approved' | 'draft' = approved ? 'approved' : 'draft';
+        const reason = review
+          ? `עורך-מבקר: ${review.verdict} — ${review.directNote}`
+          : 'עורך-מבקר לא זמין — נשמר כטיוטה';
         const { data: piece } = await admin.from('content_pieces').insert({
           site_id: site.id,
           title: article.title,
@@ -177,14 +197,14 @@ export async function runActLoop(
           lang: article.lang,
           status,
         }).select('id').single();
-        actions.newPage = { query: cand.query, status, gateScore: article.checks.score };
+        actions.newPage = { query: cand.query, status, gateScore: article.checks.score, reason };
 
         // Autonomy switch (rank.publish, outbound): the act loop historically NEVER
-        // published live. It now can — but ONLY when a passing article meets an
-        // explicit rank.publish=autopilot opt-in (risk_ack; the guard downgrades
+        // published live. It now can — but ONLY when a Critic-approved article meets
+        // an explicit rank.publish=autopilot opt-in (risk_ack; the guard downgrades
         // otherwise) and the site has a connected CMS. Otherwise it stays 'approved'
         // (ready to publish) exactly as before — no regression, no surprise go-live.
-        if (passed && piece?.id && site.cms_type) {
+        if (approved && piece?.id && site.cms_type) {
           const pubMode = await resolveMode(adminStore(admin), site.id, 'rank.publish');
           if (pubMode === 'autopilot') {
             const cfg = await getConnection(site.id, site.cms_type);
