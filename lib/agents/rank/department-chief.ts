@@ -5,6 +5,7 @@
 import { generateArticle, type Article } from '../../content-engine';
 import { research } from './roles/researcher';
 import { critique } from './roles/critic';
+import { revisionNotes } from './roles/editor';
 import type { ExistingPage, ResearchBrief, CriticReview, Lang } from './contract';
 
 // Mechanical floor: even a Critic "pass" won't publish structurally broken
@@ -51,24 +52,43 @@ export async function runContentDepartment(input: {
   }).catch(() => null);
 
   // 2) Maker — the existing content engine, now fed the brief.
-  const notes = [input.notes, brief ? briefToNotes(brief, he) : ''].filter(Boolean).join(' ');
-  const article = await generateArticle({
-    keyword: input.keyword,
-    lang: input.lang,
-    context: input.context,
-    notes: notes || undefined,
-  }).catch(() => null);
+  const baseNotes = [input.notes, brief ? briefToNotes(brief, he) : ''].filter(Boolean).join(' ');
+  const draftArticle = (extra?: string) =>
+    generateArticle({
+      keyword: input.keyword,
+      lang: input.lang,
+      context: input.context,
+      notes: [baseNotes, extra].filter(Boolean).join(' ') || undefined,
+    }).catch(() => null);
+
+  let article = await draftArticle();
   if (!article) return { article: null, brief, review: null, approved: false };
 
+  const runCritic = (a: Article) =>
+    critique({
+      article: a,
+      keyword: input.keyword,
+      lang: input.lang,
+      brief,
+      mechanicalFailures: a.checks.issues.filter((i) => !i.ok).map((i) => i.label),
+    }).catch(() => null);
+
   // 3) Critic — the adversarial editor that replaces the score-70 gate.
-  const mechanicalFailures = article.checks.issues.filter((i) => !i.ok).map((i) => i.label);
-  const review = await critique({
-    article,
-    keyword: input.keyword,
-    lang: input.lang,
-    brief,
-    mechanicalFailures,
-  }).catch(() => null);
+  let review = await runCritic(article);
+
+  // 4) Editor — one revise pass: if the Critic asked to revise (fixable base),
+  // regenerate with its findings as instructions, then re-critique and keep the
+  // better result. Turns "reject" into "improve".
+  if (review && review.verdict === 'revise') {
+    const revised = await draftArticle(revisionNotes(review, input.lang));
+    if (revised) {
+      const revisedReview = await runCritic(revised);
+      if (revisedReview && (revisedReview.verdict === 'pass' || review.verdict === 'revise')) {
+        article = revised;
+        review = revisedReview;
+      }
+    }
+  }
 
   // Final gate: the Critic must pass AND the mechanical basics must hold. If the
   // Critic call itself failed (API error), do NOT approve — the piece stays a
