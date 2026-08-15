@@ -5,6 +5,7 @@ import { claude, parseJson } from './claude';
 import { HEBREW_STYLE, humanizeHe } from './hebrew';
 import { runChecks, type CheckReport } from './seo/checks';
 import { scoreGeoMethods, type GeoReport } from './seo/geo-methods';
+import { detectOrphanWords, detectAiEmojis, type ContentIssue } from './seo/content-quality';
 import { generateImage } from './images';
 
 export type ArticleInput = {
@@ -121,9 +122,14 @@ export async function generateArticle(input: ArticleInput): Promise<Article | nu
     schema_json: buildSchema(draft),
     lang,
   };
+  const contentQuality: ContentIssue[] = [
+    ...detectAiEmojis(article.body_html),
+    ...detectOrphanWords(article.body_html),
+  ];
   return {
     ...article,
     checks: runChecks(article, input.keyword),
     geo: scoreGeoMethods(article.body_html, input.keyword),
+    contentQuality,
   };
 }

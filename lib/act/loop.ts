@@ -11,6 +11,7 @@ import { publishTo } from '../publish';
 import { getConnection } from '../db';
 import { resolveMode } from '../autonomy/resolve';
 import { adminStore } from '../autonomy/store';
+import { detectOrphanWords, detectAiEmojis } from '../seo/content-quality';
 import {
   buildDiff,
   composeReadout,
@@ -35,8 +36,24 @@ async function captureSnapshot(admin: SupabaseClient, siteId: string, siteUrl: s
     date: localDate(),
     gsc: { available: false, rows: [], clicks: null, impressions: null },
     ranks: { available: false, items: [] },
-    issues: { available: false, items: [] }, // no crawler wired in Rank yet — honestly not measured
+    issues: { available: false, items: [] }, // populated below by the on-page content-quality scan
   };
+
+  // On-page content quality — fetch the homepage and scan for AI-style emojis in
+  // prose + orphan words (typographic widows). Fails closed to "not measured".
+  try {
+    const res = await fetch(siteUrl, { headers: { 'user-agent': 'HELIX-Rank-ContentQuality/1.0' }, cache: 'no-store' });
+    if (res.ok) {
+      const html = await res.text();
+      const found = [...detectAiEmojis(html), ...detectOrphanWords(html)];
+      snap.issues = {
+        available: true,
+        items: found.map((i) => ({ type: i.kind, url: siteUrl, severity: i.severity })),
+      };
+    }
+  } catch {
+    snap.issues.available = false; // fetch failed → not measured this run
+  }
 
   // GSC — needs a stored OAuth access token per site.
   const { data: conn } = await admin
