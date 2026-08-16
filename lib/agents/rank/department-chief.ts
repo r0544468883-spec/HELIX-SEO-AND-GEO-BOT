@@ -6,6 +6,7 @@ import { generateArticle, type Article } from '../../content-engine';
 import { research } from './roles/researcher';
 import { critique } from './roles/critic';
 import { revisionNotes } from './roles/editor';
+import { linkingNotes } from './roles/linker';
 import type { ExistingPage, ResearchBrief, CriticReview, Lang } from './contract';
 
 // Mechanical floor: even a Critic "pass" won't publish structurally broken
@@ -31,6 +32,9 @@ function briefToNotes(b: ResearchBrief, he: boolean): string {
     const titles = b.cannibalizationRisk.map((c) => c.title).join('; ');
     p.push(he ? `הימנע מחפיפה לדפים הקיימים (${titles}) — כתוב זווית מובחנת.` : `Avoid overlap with existing pages (${titles}) — take a distinct angle.`);
   }
+  // Internal-Linker: weave internal links to the related existing pages.
+  const links = linkingNotes(b, he ? 'he' : 'en');
+  if (links) p.push(links);
   return p.join(' ');
 }
 
