@@ -27,6 +27,7 @@ export type Article = {
   lang: 'he' | 'en';
   checks: CheckReport; // pre-publish quality gate (§3.8.11)
   geo: GeoReport; // Princeton 9-method GEO score (AI-citation readiness)
+  contentQuality: ContentIssue[]; // AI-emoji / orphan-word content checks
 };
 
 type Draft = {
