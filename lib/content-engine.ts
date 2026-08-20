@@ -3,6 +3,7 @@
 // GEO-aware: answer-first structure, FAQ, schema. Returns a publish-ready piece.
 import { claude, parseJson } from './claude';
 import { HEBREW_STYLE, humanizeHe } from './hebrew';
+import { voicePromptBlock, type VoiceProfile } from './voice';
 import { runChecks, type CheckReport } from './seo/checks';
 import { scoreGeoMethods, type GeoReport } from './seo/geo-methods';
 import { detectOrphanWords, detectAiEmojis, type ContentIssue } from './seo/content-quality';
@@ -24,6 +25,7 @@ export type ArticleInput = {
   diagram?: string; // signature-diagram concept, rendered as a consistent figure (methodology §3.4)
   cta?: string; // problem-restatement CTA line (methodology §3.7); if absent the model writes one
   pillarTitle?: string; // for a spoke: the pillar page to link back to (hub-and-spoke)
+  voice?: VoiceProfile | null; // the user's own writing voice (from lib/voice.ts) — few-shot style anchors
 };
 
 export type Article = {
@@ -83,16 +85,19 @@ async function draftArticle(input: ArticleInput): Promise<Draft | null> {
   const notes = input.notes ? `הנחיות/תוכן לכסות: ${input.notes}. ` : '';
   const tpl = templateNotes(template, input.coinedTerm, he);
   const minWords = template === 'pillar' ? '2800+' : '1500+';
+  // The user's own voice (if a profile was supplied) becomes a few-shot style anchor.
+  const voice = voicePromptBlock(input.voice, he);
+  const voiceLine = voice ? '\n' + voice : '';
   const system = he
     ? `אתה כותב תוכן SEO+GEO מומחה. כתוב מאמר מקיף (${minWords} מילים) על מילת המפתח. ${ctx}${notes}
 ${tpl}
 מבנה answer-first: כל כותרת H2 = שאלה אמיתית, ו-40-60 המילים הראשונות עונות עליה תשובה מלאה ועצמאית (מנצח featured snippet וגם ציטוט AI). טענה אחת למשפט, עובדתי.
-שיטות GEO (פרינסטון) — חובה כדי שמנועי AI יצטטו אותך: שלב סטטיסטיקות ומספרים ספציפיים; ייחס טענות למקורות ("לפי...", "מחקר של..."); הוסף לפחות ציטוט מומחה אחד מיוחס בשם; טון סמכותי בלי מילות היסוס; משפטים קצרים; אל תדחוס את מילת המפתח (מתחת ל-3%). ${HEBREW_STYLE}
+שיטות GEO (פרינסטון) — חובה כדי שמנועי AI יצטטו אותך: שלב סטטיסטיקות ומספרים ספציפיים; ייחס טענות למקורות ("לפי...", "מחקר של..."); הוסף לפחות ציטוט מומחה אחד מיוחס בשם; טון סמכותי בלי מילות היסוס; משפטים קצרים; אל תדחוס את מילת המפתח (מתחת ל-3%). ${HEBREW_STYLE}${voiceLine}
 החזר JSON בלבד: {"title":"","meta":"תיאור מטא עד 155 תווים","h1":"","tldr":"2-3 שורות","sections":[{"h2":"","body":"פסקאות טקסט (לא HTML)"}],"faq":[{"q":"","a":"תשובה 40-60 מילים"}],"limits":"פסקה כנה","cta":"שורת CTA כהצהרת-בעיה"}`
     : `You are an expert SEO+GEO content writer. Write a comprehensive ${minWords} word article on the keyword. ${input.context ? 'Business context: ' + input.context + '. ' : ''}${input.notes ? 'Cover: ' + input.notes + '. ' : ''}
 ${tpl}
 Answer-first: each H2 is a real question, answered fully in the first 40-60 words. One claim per sentence.
-GEO methods (Princeton) — required for AI citation: include specific statistics/numbers; attribute claims to sources ("according to..."); add at least one attributed expert quote; authoritative tone, no hedging; short sentences; do NOT stuff the keyword (under 3%).
+GEO methods (Princeton) — required for AI citation: include specific statistics/numbers; attribute claims to sources ("according to..."); add at least one attributed expert quote; authoritative tone, no hedging; short sentences; do NOT stuff the keyword (under 3%).${voiceLine}
 Return ONLY JSON: {"title":"","meta":"under 155 chars","h1":"","tldr":"2-3 lines","sections":[{"h2":"","body":"paragraphs, not HTML"}],"faq":[{"q":"","a":"40-60 word answer"}],"limits":"honest paragraph","cta":"problem-restatement CTA line"}`;
   const raw = await claude(system, `Keyword: "${input.keyword}"${input.intent ? ' (intent: ' + input.intent + ')' : ''}`, template === 'pillar' ? 6000 : 4000);
   return parseJson<Draft>(raw);
@@ -160,13 +165,16 @@ export async function generateArticle(input: ArticleInput): Promise<Article | nu
   if (!draft) return null;
 
   // Hebrew content routes through the dedicated writing skill (per section body).
+  // When a voice profile is supplied, the humanize pass preserves it instead of
+  // flattening the voice to the generic house style.
   if (lang === 'he') {
-    draft.title = await humanizeHe(draft.title);
-    for (const s of draft.sections ?? []) s.body = await humanizeHe(s.body);
-    for (const f of draft.faq ?? []) f.a = await humanizeHe(f.a);
-    if (draft.tldr) draft.tldr = await humanizeHe(draft.tldr);
-    if (draft.limits) draft.limits = await humanizeHe(draft.limits);
-    if (draft.cta) draft.cta = await humanizeHe(draft.cta);
+    const vh = voicePromptBlock(input.voice, true);
+    draft.title = await humanizeHe(draft.title, vh);
+    for (const s of draft.sections ?? []) s.body = await humanizeHe(s.body, vh);
+    for (const f of draft.faq ?? []) f.a = await humanizeHe(f.a, vh);
+    if (draft.tldr) draft.tldr = await humanizeHe(draft.tldr, vh);
+    if (draft.limits) draft.limits = await humanizeHe(draft.limits, vh);
+    if (draft.cta) draft.cta = await humanizeHe(draft.cta, vh);
   }
 
   let body_html = renderHtml(draft, { he: lang === 'he', diagram: input.diagram, cta: input.cta });

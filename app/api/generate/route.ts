@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { generateArticle } from '@/lib/content-engine';
-import { saveContentPiece } from '@/lib/db';
+import { saveContentPiece, getVoiceProfile } from '@/lib/db';
+import { extractVoiceProfile, type VoiceProfile } from '@/lib/voice';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -16,10 +17,18 @@ export async function POST(req: Request) {
     notes?: string;
     siteId?: string;
     withImage?: boolean;
+    voice?: VoiceProfile | null; // inline voice profile (e.g. from a not-yet-saved sample)
+    voiceSamples?: string[]; // OR raw samples to learn a voice from, one-off for this run
+    useVoice?: boolean; // load the site's saved voice profile (default true when siteId present)
   };
   if (!body.keyword?.trim()) return NextResponse.json({ error: 'no_keyword' }, { status: 400 });
 
   try {
+    // Resolve the author's voice: explicit inline profile → learn-from-samples → site's saved profile.
+    let voice: VoiceProfile | null = body.voice ?? null;
+    if (!voice && body.voiceSamples?.length) voice = await extractVoiceProfile(body.voiceSamples);
+    if (!voice && body.siteId && body.useVoice !== false) voice = await getVoiceProfile(body.siteId);
+
     const article = await generateArticle({
       keyword: body.keyword.trim(),
       lang: body.lang ?? 'he',
@@ -27,6 +36,7 @@ export async function POST(req: Request) {
       intent: body.intent,
       notes: body.notes,
       withImage: body.withImage,
+      voice,
     });
     if (!article) return NextResponse.json({ error: 'generation_failed' }, { status: 500 });
 

@@ -19,15 +19,16 @@ export const HEBREW_STYLE =
 
 // Dedicated humanize + proofread pass (for the article/content engine).
 // No-op for non-Hebrew. Never throws — never blocks the loop.
-export async function humanizeHe(text: string): Promise<string> {
+// `voiceHint` (optional): a rendered voice-profile block (see lib/voice.ts) so the
+// humanize pass preserves the user's authentic voice instead of flattening to a generic one.
+export async function humanizeHe(text: string, voiceHint?: string): Promise<string> {
   if (!text.trim() || !isHebrew(text)) return text;
   try {
-    return await claude(
+    const system =
       'אתה עורך עברית מוביל. שכתב את הטקסט כך שיישמע אנושי-ישראלי טבעי לחלוטין (לא כמו בינה מלאכותית), ' +
-        'ותקן כל שגיאת כתיב או דקדוק. שמור על המשמעות, הטון והאורך. החזר אך ורק את הטקסט המתוקן.',
-      text,
-      2000
-    );
+      'ותקן כל שגיאת כתיב או דקדוק. שמור על המשמעות, הטון והאורך. החזר אך ורק את הטקסט המתוקן.' +
+      (voiceHint ? '\n' + voiceHint : '');
+    return await claude(system, text, 2000);
   } catch {
     return text;
   }

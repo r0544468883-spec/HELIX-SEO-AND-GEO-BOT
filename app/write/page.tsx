@@ -37,6 +37,37 @@ export default function WritePage() {
   const [err, setErr] = useState<string | null>(null);
   const [article, setArticle] = useState<Article | null>(null);
 
+  // Voice — paste your own writing so the article comes out in YOUR authentic voice.
+  type Voice = { keyTells: string[]; signaturePassages: string[]; summary: string; tier: string; words: number; lang: 'he' | 'en' };
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [samples, setSamples] = useState<string[]>(['', '']);
+  const [voice, setVoice] = useState<Voice | null>(null);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceMsg, setVoiceMsg] = useState<string | null>(null);
+  const setSample = (i: number, v: string) => setSamples((s) => s.map((x, j) => (j === i ? v : x)));
+
+  async function learnVoice() {
+    setVoiceMsg(null);
+    const filled = samples.map((s) => s.trim()).filter(Boolean);
+    if (filled.length < 1) return setVoiceMsg('הדביקו לפחות דוגמה אחת שכתבתם.');
+    setVoiceBusy(true);
+    try {
+      const res = await fetch('/api/voice', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ samples: filled }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'error');
+      setVoice(json.voice as Voice);
+      setVoiceMsg('הקול נלמד ✅ המאמר הבא ייכתב בסגנון שלכם.');
+    } catch (e) {
+      setVoiceMsg('שגיאה: ' + (e as Error).message);
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
   // WordPress
   const [wpUrl, setWpUrl] = useState('');
   const [wpUser, setWpUser] = useState('');
@@ -55,7 +86,7 @@ export default function WritePage() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ keyword, context, notes, lang, withImage }),
+        body: JSON.stringify({ keyword, context, notes, lang, withImage, voice }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'error');
@@ -117,6 +148,62 @@ export default function WritePage() {
           <input type="checkbox" checked={withImage} onChange={(e) => setWithImage(e.target.checked)} />
           צור תמונת AI למאמר
         </label>
+
+        {/* Voice — write the article in the user's own authentic voice */}
+        <div className="rounded-xl border border-black/10 bg-white">
+          <button
+            type="button"
+            onClick={() => setVoiceOpen((o) => !o)}
+            className="w-full flex items-center justify-between px-4 py-3 text-right"
+          >
+            <span className="text-[14px] font-semibold">
+              ✍️ כתוב בקול שלי
+              {voice && <span className="mr-2 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[12px] font-bold">פעיל</span>}
+            </span>
+            <span className="text-[var(--ink-secondary)] text-[13px]">{voiceOpen ? '▲' : '▼'}</span>
+          </button>
+          {voiceOpen && (
+            <div className="px-4 pb-4 space-y-2 border-t border-black/5 pt-3">
+              <p className="text-[13px] text-[var(--ink-secondary)]">
+                הדביקו 1–3 טקסטים שכתבתם (פוסט, מאמר, מייל). נלמד את הקול האותנטי שלכם, והמאמר ייכתב בסגנון שלכם — לא בקול גנרי.
+              </p>
+              {samples.map((s, i) => (
+                <textarea
+                  key={i}
+                  className={box + ' resize-y'}
+                  rows={3}
+                  value={s}
+                  onChange={(e) => setSample(i, e.target.value)}
+                  placeholder={`דוגמה ${i + 1} — טקסט שכתבתם בעצמכם…`}
+                />
+              ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={learnVoice} disabled={voiceBusy} className="rounded-xl bg-black text-white px-5 py-2.5 text-[14px] font-bold disabled:opacity-50">
+                  {voiceBusy ? 'לומד…' : voice ? 'עדכן את הקול' : 'למד את הקול שלי'}
+                </button>
+                {voice && (
+                  <button onClick={() => { setVoice(null); setVoiceMsg('הקול הוסר — נחזור לסגנון הבית.'); }} className="text-[13px] text-[var(--ink-secondary)] underline">
+                    הסר
+                  </button>
+                )}
+                {voiceMsg && <span className="text-[13px]">{voiceMsg}</span>}
+              </div>
+              {voice && (
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 space-y-1.5">
+                  {voice.summary && <div className="text-[13px] font-semibold">הקול שלכם: {voice.summary}</div>}
+                  {voice.keyTells.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {voice.keyTells.map((t, k) => (
+                        <span key={k} className="rounded-full bg-white border border-emerald-200 px-2.5 py-0.5 text-[12px]">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <button onClick={generate} disabled={busy} className="rounded-xl bg-emerald-600 text-white px-6 py-3 text-[15px] font-bold disabled:opacity-50">
           {busy ? 'כותב…' : 'כתוב מאמר'}
         </button>
