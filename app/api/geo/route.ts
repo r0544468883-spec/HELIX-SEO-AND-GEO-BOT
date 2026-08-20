@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { analyzeCitations } from '@/lib/geo/citation';
+import { findSiteByDomain, saveCitationRun, getCitationHistory } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -30,7 +31,23 @@ export async function POST(req: Request) {
     if (report.results.length === 0) {
       return NextResponse.json({ error: 'no_engine_configured' }, { status: 400 });
     }
-    return NextResponse.json({ report });
+
+    // Persist a trend snapshot if this domain maps to one of the caller's sites.
+    // Best-effort: an unauthenticated caller or an unmatched domain just skips it.
+    let persisted = false;
+    let history: Awaited<ReturnType<typeof getCitationHistory>> = [];
+    try {
+      const siteId = await findSiteByDomain(body.domain);
+      if (siteId) {
+        const { error } = await saveCitationRun(siteId, report);
+        persisted = !error;
+        history = await getCitationHistory(siteId);
+      }
+    } catch {
+      // persistence is non-fatal — always return the live report
+    }
+
+    return NextResponse.json({ report, persisted, history });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

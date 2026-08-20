@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 
 type QueryResult = { query: string; engine: string; cited: boolean; competitorsCited: string[] };
 type EnginePresence = { engine: string; cited: number; total: number };
+type TrendPoint = { date: string; score: number; shareOfVoice: number };
 type Report = {
   score: number;
   shareOfVoice: number;
@@ -23,6 +24,17 @@ type AeoCheck = { id: string; label: string; category: 'discovery' | 'structure'
 type AeoReport = { url: string; score: number; checks: AeoCheck[] };
 const AEO_CAT_LABEL: Record<AeoCheck['category'], string> = { discovery: 'גילוי', structure: 'מבנה', content: 'תוכן' };
 
+// Multi-channel distribution — off-site content drafts per platform
+type ChannelDraft = { channel: string; title: string; body: string; notes: string };
+const CHANNEL_LABEL: Record<string, string> = { reddit: 'Reddit', youtube: 'YouTube', linkedin: 'LinkedIn', trustpilot: 'Trustpilot / ביקורות', backlinks: 'Backlinks / Outreach' };
+
+// Brand Protection — how AI engines portray the brand (sentiment + wrong facts)
+type BrandAlert = { severity: 'high' | 'medium' | 'low'; type: 'negative_sentiment' | 'wrong_fact' | 'not_mentioned'; engine: string; query: string; detail: string; correction?: string };
+type BrandEnginePresence = { engine: string; sentiment: string; sentimentScore: number; wrongFacts: number };
+type BrandReport = { brand: string; sentimentScore: number; wrongFactCount: number; perEngine: BrandEnginePresence[]; alerts: BrandAlert[] };
+const SEV_COLOR: Record<string, string> = { high: '#dc2626', medium: '#d97706', low: '#6b7280' };
+const ALERT_LABEL: Record<string, string> = { negative_sentiment: 'טון שלילי', wrong_fact: 'מידע שגוי', not_mentioned: 'לא מוזכר' };
+
 // Entity Audit — how well AI knows a brand/person as an entity
 type EntityCheck = { id: string; label: string; category: 'identity' | 'sources' | 'linking'; pass: boolean; value: string; detail: string };
 type EntityReport = { name: string; score: number; qid?: string; wikipediaUrl?: string; notabilityReady: boolean; checks: EntityCheck[] };
@@ -37,6 +49,8 @@ export default function GeoPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
+  const [history, setHistory] = useState<TrendPoint[]>([]);
+  const [persisted, setPersisted] = useState<boolean | null>(null);
 
   // AI referral traffic (GA4)
   const [propertyId, setPropertyId] = useState('');
@@ -50,12 +64,100 @@ export default function GeoPage() {
   const [aErr, setAErr] = useState<string | null>(null);
   const [audit, setAudit] = useState<AeoReport | null>(null);
 
+  // Multi-channel distribution
+  const [distTopic, setDistTopic] = useState('');
+  const [distBusy, setDistBusy] = useState(false);
+  const [distErr, setDistErr] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<ChannelDraft[]>([]);
+
+  async function runDistribution() {
+    setDistErr(null);
+    setDrafts([]);
+    if (!distTopic.trim()) return setDistErr('הכניסו נושא/מוצר.');
+    setDistBusy(true);
+    try {
+      const res = await fetch('/api/distribution', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ topic: distTopic.trim(), brand: brand.trim() || undefined, domain: domain.trim() || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'error');
+      setDrafts((json.drafts as ChannelDraft[]) ?? []);
+    } catch (e) {
+      setDistErr('שגיאה: ' + (e as Error).message);
+    } finally {
+      setDistBusy(false);
+    }
+  }
+
+  // Brand Protection
+  const [bpBrand, setBpBrand] = useState('');
+  const [bpDomain, setBpDomain] = useState('');
+  const [bpTruth, setBpTruth] = useState('');
+  const [bpBusy, setBpBusy] = useState(false);
+  const [bpErr, setBpErr] = useState<string | null>(null);
+  const [brandReport, setBrandReport] = useState<BrandReport | null>(null);
+
+  async function runBrand() {
+    setBpErr(null);
+    setBrandReport(null);
+    if (!bpBrand.trim()) return setBpErr('הכניסו שם מותג.');
+    setBpBusy(true);
+    try {
+      const res = await fetch('/api/brand-protection', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ brand: bpBrand.trim(), domain: bpDomain.trim() || undefined, truth: bpTruth.trim() || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'error');
+      setBrandReport(json.report as BrandReport);
+    } catch (e) {
+      setBpErr('שגיאה: ' + (e as Error).message);
+    } finally {
+      setBpBusy(false);
+    }
+  }
+
   // Entity Audit
   const [entName, setEntName] = useState('');
   const [entDomain, setEntDomain] = useState('');
   const [eBusy, setEBusy] = useState(false);
   const [eErr, setEErr] = useState<string | null>(null);
   const [entity, setEntity] = useState<EntityReport | null>(null);
+
+  // Wikidata entity push (draft / live)
+  const [pushDesc, setPushDesc] = useState('');
+  const [pushKind, setPushKind] = useState<'business' | 'organization' | 'person' | 'brand'>('business');
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushRes, setPushRes] = useState<{ ok: boolean; qid?: string; error?: string; draft?: { prefillUrl: string } } | null>(null);
+
+  async function runPush(live: boolean) {
+    setPushRes(null);
+    if (!entName.trim() || !pushDesc.trim()) return setPushRes({ ok: false, error: 'צריך שם + תיאור קצר.' });
+    setPushBusy(true);
+    try {
+      const res = await fetch('/api/entity/push', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: entName.trim(),
+          description: pushDesc.trim(),
+          officialSite: entDomain.trim() ? (entDomain.trim().startsWith('http') ? entDomain.trim() : `https://${entDomain.trim()}`) : undefined,
+          instanceOf: pushKind,
+          qid: entity?.qid,
+          live,
+        }),
+      });
+      const json = await res.json();
+      setPushRes(json);
+    } catch (e) {
+      setPushRes({ ok: false, error: (e as Error).message });
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   async function runEntity() {
     setEErr(null);
@@ -144,6 +246,8 @@ export default function GeoPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'error');
       setReport(json.report as Report);
+      setHistory((json.history as TrendPoint[]) ?? []);
+      setPersisted(typeof json.persisted === 'boolean' ? json.persisted : null);
     } catch (e) {
       setErr('שגיאה: ' + (e as Error).message);
     } finally {
@@ -183,6 +287,24 @@ export default function GeoPage() {
               <ScoreGauge label="Citation Score" value={report.score} max={100} />
             </div>
             <Stat label="Share of Voice" value={`${Math.round(report.shareOfVoice * 100)}`} suffix="%" />
+          </div>
+
+          {/* Citation Score trend — the tracker view. Populated once the scanned */}
+          {/* domain is a saved site (each scan stores a daily snapshot). */}
+          <div className="rounded-2xl border border-black/10 bg-white p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[15px] font-bold">מגמת Citation Score</div>
+              {persisted === true && <span className="text-[12px] font-semibold text-emerald-600">נשמר · {history.length} נק׳ מדידה</span>}
+            </div>
+            {history.length > 1 ? (
+              <TrendChart points={history} />
+            ) : persisted === true ? (
+              <p className="text-[13px] text-[var(--ink-secondary)]">נקודת-מדידה ראשונה נשמרה. חזרו לסרוק (או תנו ל-cron לרוץ) כדי לראות מגמה לאורך זמן.</p>
+            ) : (
+              <p className="text-[13px] text-[var(--ink-secondary)]">
+                כדי לעקוב אחרי המגמה לאורך זמן — הוסיפו את הדומיין הזה כ<a href="/sites" className="font-semibold text-emerald-700 underline">אתר</a>. כל סריקה תישמר כנקודת-מדידה יומית.
+              </p>
+            )}
           </div>
 
           <div className="rounded-2xl border border-black/10 bg-white p-5">
@@ -342,6 +464,129 @@ export default function GeoPage() {
                 </div>
               );
             })}
+
+            {/* Wikidata push — the write half: create/strengthen the entity */}
+            <div className="mt-4 rounded-xl bg-emerald-50/60 border border-emerald-200 p-4">
+              <div className="text-[14px] font-bold mb-1">חיזוק הישות ב-Wikidata</div>
+              <p className="text-[12px] text-[var(--ink-secondary)] mb-2">
+                {entity.qid ? `מוסיף לפריט הקיים ${entity.qid} אתר-רשמי ותיאור.` : 'יוצר טיוטת פריט חדש (שם · תיאור · סוג · אתר רשמי).'} בלי חיבור Wikidata נחזיר טיוטה + קישור-הגשה ידני.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <input className={box + ' flex-1 min-w-[220px]'} value={pushDesc} onChange={(e) => setPushDesc(e.target.value)} placeholder="תיאור קצר (עד 250 תווים) — למשל: פלטפורמת SEO/GEO בעברית" />
+                <select className={box + ' max-w-[160px]'} value={pushKind} onChange={(e) => setPushKind(e.target.value as typeof pushKind)}>
+                  <option value="business">עסק</option>
+                  <option value="organization">ארגון</option>
+                  <option value="brand">מותג</option>
+                  <option value="person">אדם</option>
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => runPush(false)} disabled={pushBusy} className="rounded-lg bg-black text-white px-4 py-2 text-[13px] font-semibold disabled:opacity-50">צור טיוטה</button>
+                <button onClick={() => runPush(true)} disabled={pushBusy} className="rounded-lg bg-emerald-600 text-white px-4 py-2 text-[13px] font-semibold disabled:opacity-50">דחוף ל-Wikidata</button>
+              </div>
+              {pushBusy && <p className="text-[12px] text-[var(--ink-secondary)] mt-2">שולח…</p>}
+              {pushRes && (
+                <div className="mt-2 text-[13px]">
+                  {pushRes.ok && pushRes.qid && <p className="text-emerald-700 font-semibold">✓ נשמר ב-Wikidata: <a className="underline" href={`https://www.wikidata.org/wiki/${pushRes.qid}`} target="_blank" rel="noreferrer">{pushRes.qid}</a></p>}
+                  {pushRes.ok && !pushRes.qid && pushRes.draft && <p className="text-emerald-700">טיוטה מוכנה — <a className="underline font-semibold" href={pushRes.draft.prefillUrl} target="_blank" rel="noreferrer">הגישו ידנית ל-Wikidata ←</a></p>}
+                  {!pushRes.ok && (
+                    <p className="text-amber-700">
+                      {pushRes.error === 'wikidata_write_not_configured' ? 'כתיבה חיה דורשת חיבור Wikidata (OAuth). ' : `שגיאה: ${pushRes.error}. `}
+                      {pushRes.draft && <a className="underline font-semibold" href={pushRes.draft.prefillUrl} target="_blank" rel="noreferrer">הגישו את הטיוטה ידנית ←</a>}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Brand Protection — how AI engines portray you (sentiment + wrong facts) */}
+      <div className="mt-10 rounded-2xl border border-black/10 bg-white p-5">
+        <h2 className="text-[16px] font-bold mb-1">Brand Protection — איך ה-AI מתאר אותך</h2>
+        <p className="text-[13px] text-[var(--ink-secondary)] mb-3">
+          שואל את מנועי ה-AI שאלות על המותג, מנתח <b>סנטימנט</b> ומזהה <b>מידע שגוי/מיושן</b> שהם מפיצים עליך. הזינו <b>עובדות-אמת</b> כדי שנשווה מולן.
+        </p>
+        <div className="grid grid-cols-2 gap-3 mb-2">
+          <input className={box} value={bpBrand} onChange={(e) => setBpBrand(e.target.value)} placeholder="שם המותג" />
+          <input className={box} dir="ltr" value={bpDomain} onChange={(e) => setBpDomain(e.target.value)} placeholder="example.com (לשמירת התראות)" />
+        </div>
+        <textarea className={box + ' min-h-[80px] mb-2'} value={bpTruth} onChange={(e) => setBpTruth(e.target.value)} placeholder="עובדות-אמת רשמיות (source of truth) — מחיר, שירותים, שנת-הקמה, קהל יעד… אופציונלי אך מומלץ" />
+        <button onClick={runBrand} disabled={bpBusy} className="rounded-lg bg-black text-white px-4 py-2 text-[14px] font-semibold disabled:opacity-50">
+          {bpBusy ? 'בודק מוניטין ב-AI…' : 'בדוק Brand Protection'}
+        </button>
+        {bpErr && <p className="text-[13px] text-red-600 mt-2">{bpErr}</p>}
+        {brandReport && (
+          <div className="mt-4">
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="rounded-xl border border-black/10 p-4">
+                <div className="text-[12px] font-semibold text-[var(--ink-secondary)] mb-1">סנטימנט כללי</div>
+                <div className="text-[28px] font-extrabold" style={{ color: brandReport.sentimentScore > 0.2 ? '#059669' : brandReport.sentimentScore < -0.2 ? '#dc2626' : '#d97706' }}>
+                  {brandReport.sentimentScore > 0 ? '+' : ''}{brandReport.sentimentScore.toFixed(2)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-black/10 p-4">
+                <div className="text-[12px] font-semibold text-[var(--ink-secondary)] mb-1">מידע שגוי שנמצא</div>
+                <div className="text-[28px] font-extrabold" style={{ color: brandReport.wrongFactCount ? '#dc2626' : '#059669' }}>{brandReport.wrongFactCount}</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              {brandReport.perEngine.map((e) => (
+                <span key={e.engine} className="rounded-full px-3 py-1 text-[13px] font-semibold" style={{ background: 'rgba(0,0,0,.05)' }}>
+                  {ENGINE_LABEL[e.engine] ?? e.engine}: {e.sentiment === 'positive' ? '🙂' : e.sentiment === 'negative' ? '🙁' : '😐'} {e.sentimentScore > 0 ? '+' : ''}{e.sentimentScore}{e.wrongFacts ? ` · ${e.wrongFacts} שגיאות` : ''}
+                </span>
+              ))}
+            </div>
+
+            <div className="text-[15px] font-bold mb-2">התראות — {brandReport.alerts.length}</div>
+            {brandReport.alerts.length === 0 && <p className="text-[14px] text-[var(--ink-secondary)]">אין התראות — המותג מיוצג נכון וחיובי 🎉</p>}
+            <div className="space-y-2">
+              {brandReport.alerts.map((a, i) => (
+                <div key={i} className="border-r-[3px] pr-3 py-1.5" style={{ borderColor: SEV_COLOR[a.severity] }}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: SEV_COLOR[a.severity], color: '#fff' }}>{a.severity}</span>
+                    <span className="text-[12px] font-semibold text-[var(--ink-secondary)]">{ALERT_LABEL[a.type]} · {ENGINE_LABEL[a.engine] ?? a.engine}</span>
+                  </div>
+                  <div className="text-[14px] mt-0.5">{a.detail}</div>
+                  {a.correction && <div className="text-[13px] text-emerald-700 mt-0.5">תיקון: {a.correction}</div>}
+                  {a.type !== 'not_mentioned' && (
+                    <a href={`/write?keyword=${encodeURIComponent(a.query)}`} className="inline-block mt-1 text-[12px] font-semibold text-black underline">כתוב תוכן מתקן ←</a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Multi-channel distribution — off-site content per platform */}
+      <div className="mt-10 rounded-2xl border border-black/10 bg-white p-5">
+        <h2 className="text-[16px] font-bold mb-1">הפצה רב-ערוצית — תוכן off-site</h2>
+        <p className="text-[13px] text-[var(--ink-secondary)] mb-3">
+          מפיק טיוטות מותאמות לכל פלטפורמה (<b>Reddit · YouTube · LinkedIn · Trustpilot · Backlinks</b>) — האזכורים שמנועי-AI קוראים <b>מחוץ</b> לאתר שלך. מזין את שדות המותג/דומיין שלמעלה.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <input className={box + ' flex-1 min-w-[240px]'} value={distTopic} onChange={(e) => setDistTopic(e.target.value)} placeholder="נושא / מוצר להפצה — למשל: כלי GEO בעברית" />
+          <button onClick={runDistribution} disabled={distBusy} className="rounded-lg bg-black text-white px-4 py-2 text-[14px] font-semibold disabled:opacity-50">
+            {distBusy ? 'מייצר…' : 'ייצר תוכן ל-5 ערוצים'}
+          </button>
+        </div>
+        {distErr && <p className="text-[13px] text-red-600 mt-2">{distErr}</p>}
+        {drafts.length > 0 && (
+          <div className="mt-4 space-y-3">
+            {drafts.map((d, i) => (
+              <details key={i} className="rounded-xl border border-black/10 bg-black/[0.02] p-4" open={i === 0}>
+                <summary className="cursor-pointer text-[14px] font-bold">{CHANNEL_LABEL[d.channel] ?? d.channel} — {d.title}</summary>
+                <div className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed">{d.body}</div>
+                {d.notes && (
+                  <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-800 whitespace-pre-wrap">
+                    <b>איך להפיץ:</b> {d.notes}
+                  </div>
+                )}
+              </details>
+            ))}
           </div>
         )}
       </div>
@@ -388,6 +633,30 @@ function ScoreGauge({ label, value, max }: { label: string; value: number; max: 
         </div>
       </div>
       <div className="text-[13px] font-semibold text-[var(--ink-secondary)]">{label}</div>
+    </div>
+  );
+}
+
+// Citation Score over time — a dependency-free SVG line (LTR, 0..100 y-axis).
+function TrendChart({ points }: { points: TrendPoint[] }) {
+  const W = 620, H = 120, pad = 8;
+  const n = points.length;
+  const x = (i: number) => pad + (i / Math.max(1, n - 1)) * (W - pad * 2);
+  const y = (v: number) => H - pad - (Math.max(0, Math.min(100, v)) / 100) * (H - pad * 2);
+  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.score).toFixed(1)}`).join(' ');
+  const last = points[n - 1];
+  return (
+    <div dir="ltr">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" preserveAspectRatio="none" role="img" aria-label="מגמת Citation Score">
+        <line x1={pad} y1={y(50)} x2={W - pad} y2={y(50)} stroke="rgba(0,0,0,.06)" strokeWidth="1" />
+        <path d={line} fill="none" stroke="#059669" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {points.map((p, i) => <circle key={i} cx={x(i)} cy={y(p.score)} r={i === n - 1 ? 4 : 2.5} fill="#059669" />)}
+      </svg>
+      <div className="flex items-center justify-between text-[12px] text-[var(--ink-secondary)] mt-1">
+        <span>{points[0].date}</span>
+        <span className="font-semibold text-emerald-700">עדכני: {last.score} · SoV {Math.round(last.shareOfVoice * 100)}%</span>
+        <span>{last.date}</span>
+      </div>
     </div>
   );
 }
