@@ -10,6 +10,22 @@ export type Lang = 'he' | 'en';
 // Researcher/Critic may use for internal-links + cannibalization. Never invented.
 export type ExistingPage = { title: string; url?: string; keyword?: string };
 
+// --- Orchestrator output: a hub-and-spoke plan (methodology §2, §5). ------------
+// The Orchestrator is the missing "campaign-altitude" node: given ONE seed gap it
+// plans a pillar + N spokes so the loop stops shipping isolated articles. Honesty
+// rule (same as the Researcher): it plans keywords + angles, it does NOT invent
+// facts. `coinedTerm` is a PROPOSED category term — the Critic still gates whether
+// it is real/defensible (never spam).
+export type ArticleTemplate = 'spoke' | 'pillar' | 'compare' | 'stats';
+export type SpokePlan = { keyword: string; angle: string };
+export type ClusterPlan = {
+  pillarKeyword: string;      // the head term the pillar page targets
+  coinedTerm: string | null;  // invented category term, or null if none is warranted
+  angle: string;              // the cluster's single differentiating angle
+  diagram: string;            // one-line concept for the signature diagram reused across the cluster
+  spokes: SpokePlan[];        // 4-8 long-tail spokes, each linking back to the pillar
+};
+
 // --- Researcher output: a focused brief. Planning, not fabricated facts. --------
 export type ResearchBrief = {
   angle: string;                 // the unique angle this article should take
@@ -30,6 +46,7 @@ export type CriticReview = {
   eeatIssues: string[];      // trust/expertise/authority gaps
   cannibalization: string[]; // concrete overlaps with a named existing page
   geoGaps: string[];         // why an AI engine would NOT cite this
+  templateGaps?: string[];   // methodology-template misses: no honest "what we don't solve", generic CTA (not problem-restatement), missing TL;DR
   mustFix: string[];         // blocking items before publish
   directNote: string;        // one blunt sentence, no sugarcoating
 };

@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchSearchAnalytics, type GscRow } from '../gsc';
 import { analyze as buildQuickWinPlans } from '../striking-distance';
 import { runContentDepartment } from '../agents/rank/department-chief';
+import { resolveClusterTarget, recordClusterProduction, type ClusterTarget } from './cluster';
 import { publishTo } from '../publish';
 import { getConnection } from '../db';
 import { resolveMode } from '../autonomy/resolve';
@@ -187,12 +188,28 @@ export async function runActLoop(
         .limit(200);
       const existingPages = (existing ?? []).map((p) => ({ title: p.title as string }));
 
+      // Orchestrator (methodology §5): the content gap seeds a hub-and-spoke
+      // cluster; the loop produces the NEXT item from that plan (pillar → spokes),
+      // one per run. A down Orchestrator → null → we fall back to a standalone
+      // article on the raw query exactly as before (no regression).
+      const target: ClusterTarget | null = await resolveClusterTarget(admin, {
+        siteId: site.id,
+        seedKeyword: cand.query,
+        lang,
+        context: site.url,
+        existingPages,
+      }).catch(() => null);
+
       const run = await runContentDepartment({
-        keyword: cand.query,
+        keyword: target?.keyword ?? cand.query,
         lang,
         context: site.url,
         notes: `ביקוש: ${cand.impressions} חשיפות ב-GSC ללא עמוד ייעודי`,
         existingPages,
+        template: target?.template,
+        coinedTerm: target?.coinedTerm,
+        diagram: target?.diagram,
+        pillarTitle: target?.pillarTitle,
       }).catch(() => null);
 
       if (!run || !run.article) {
@@ -203,9 +220,10 @@ export async function runActLoop(
         // anything the Critic rejected/revised — or an absent Critic — stays a
         // draft (edited, unverified), never auto-published.
         const status: 'approved' | 'draft' = approved ? 'approved' : 'draft';
-        const reason = review
+        const clusterNote = target ? ` [${target.role === 'pillar' ? 'עוגן' : 'לוויין'} ב-cluster]` : '';
+        const reason = (review
           ? `עורך-מבקר: ${review.verdict} — ${review.directNote}`
-          : 'עורך-מבקר לא זמין — נשמר כטיוטה';
+          : 'עורך-מבקר לא זמין — נשמר כטיוטה') + clusterNote;
         const { data: piece } = await admin.from('content_pieces').insert({
           site_id: site.id,
           title: article.title,
@@ -213,8 +231,12 @@ export async function runActLoop(
           schema_json: article.schema_json,
           lang: article.lang,
           status,
+          cluster_id: target?.clusterId ?? null,
+          cluster_role: target?.role ?? null,
         }).select('id').single();
-        actions.newPage = { query: cand.query, status, gateScore: article.checks.score, reason };
+        // Mark the cluster slot filled so the next run produces the next item.
+        if (target && piece?.id) await recordClusterProduction(admin, target, piece.id).catch(() => {});
+        actions.newPage = { query: target?.keyword ?? cand.query, status, gateScore: article.checks.score, reason };
 
         // Autonomy switch (rank.publish, outbound): the act loop historically NEVER
         // published live. It now can — but ONLY when a Critic-approved article meets

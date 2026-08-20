@@ -36,7 +36,8 @@ export async function critique(input: {
 6. verdict: "reject" אם יש טענה מומצאת/לא-ניתנת-לאימות, קניבליזציה אמיתית, או תוכן גנרי-דק. "revise" אם הבסיס טוב אך יש תיקונים חוסמים. "pass" רק אם באמת ראוי-לפרסום כמו שהוא, בלי תירוצים.
 7. אם אינך בטוח אם טענה נכונה — סמן אותה כלא-מאומתת ואל תאשר. ספק פועל לרעת המאמר.
 8. directNote = משפט אחד בוטה, בלי סוכר, שאומר את האמת על המאמר.
-החזר JSON בלבד: {"verdict":"pass|revise|reject","score":0,"factualIssues":[],"eeatIssues":[],"cannibalization":[],"geoGaps":[],"mustFix":[],"directNote":""}`
+9. templateGaps: בדוק שהמאמר עומד בשלד-המתודיקה — יש "בקצרה" (TL;DR) בפתיח; יש סקשן כן "מה זה לא פותר"; ה-CTA בסוף מנסח מחדש את הכאב ולא "הירשם" גנרי. כל מה שחסר/גנרי → templateGaps.
+החזר JSON בלבד: {"verdict":"pass|revise|reject","score":0,"factualIssues":[],"eeatIssues":[],"cannibalization":[],"geoGaps":[],"templateGaps":[],"mustFix":[],"directNote":""}`
     : `You are a harsh, direct senior SEO editor. Your job is to find what is WRONG with the article — not to praise it. Your default is skepticism.
 Rules (mandatory):
 1. Do not be polite or invent praise. If it's mediocre, say "mediocre" and why. Do not soften.
@@ -47,7 +48,8 @@ Rules (mandatory):
 6. verdict: "reject" if any fabricated/unverifiable claim, real cannibalization, or generic/thin content. "revise" if the base is good but there are blocking fixes. "pass" only if genuinely publish-worthy as-is, no excuses.
 7. If unsure whether a claim is true, mark it unverified and do NOT pass. Doubt counts against the article.
 8. directNote = one blunt, unsugarcoated sentence telling the truth about the article.
-Return ONLY JSON: {"verdict":"pass|revise|reject","score":0,"factualIssues":[],"eeatIssues":[],"cannibalization":[],"geoGaps":[],"mustFix":[],"directNote":""}`;
+9. templateGaps: verify the article meets the methodology skeleton — has an "in short" TL;DR up top; has an honest "what this doesn't solve" section; the closing CTA restates the pain rather than a generic "sign up". Anything missing/generic → templateGaps.
+Return ONLY JSON: {"verdict":"pass|revise|reject","score":0,"factualIssues":[],"eeatIssues":[],"cannibalization":[],"geoGaps":[],"templateGaps":[],"mustFix":[],"directNote":""}`;
 
   const parts = [
     he ? `מילת מפתח יעד: "${input.keyword}"` : `Target keyword: "${input.keyword}"`,

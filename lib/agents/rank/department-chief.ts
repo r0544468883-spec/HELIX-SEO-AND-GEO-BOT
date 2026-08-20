@@ -7,7 +7,7 @@ import { research } from './roles/researcher';
 import { critique } from './roles/critic';
 import { revisionNotes } from './roles/editor';
 import { linkingNotes } from './roles/linker';
-import type { ExistingPage, ResearchBrief, CriticReview, Lang } from './contract';
+import type { ExistingPage, ResearchBrief, CriticReview, Lang, ArticleTemplate } from './contract';
 
 // Mechanical floor: even a Critic "pass" won't publish structurally broken
 // content (missing schema, far too short, keyword absent). The Critic judges
@@ -44,6 +44,12 @@ export async function runContentDepartment(input: {
   context?: string;
   notes?: string;
   existingPages: ExistingPage[];
+  // Methodology template layer (Orchestrator-driven). All optional — omitted =
+  // the historical single 'spoke' article, so existing callers are unchanged.
+  template?: ArticleTemplate;
+  coinedTerm?: string;   // invented category term to define + own (pillar)
+  diagram?: string;      // signature-diagram concept reused across the cluster
+  pillarTitle?: string;  // for a spoke: the pillar page to link back to
 }): Promise<ContentRun> {
   const he = input.lang === 'he';
 
@@ -55,14 +61,22 @@ export async function runContentDepartment(input: {
     existingPages: input.existingPages,
   }).catch(() => null);
 
-  // 2) Maker — the existing content engine, now fed the brief.
-  const baseNotes = [input.notes, brief ? briefToNotes(brief, he) : ''].filter(Boolean).join(' ');
+  // Hub-and-spoke: a spoke must link back to its pillar (methodology §2 link rule).
+  const pillarNote = input.pillarTitle
+    ? (he ? `קשר פנימית חזרה לעמוד-העוגן: "${input.pillarTitle}".` : `Add an internal link back to the pillar page: "${input.pillarTitle}".`)
+    : '';
+
+  // 2) Maker — the existing content engine, now fed the brief + template.
+  const baseNotes = [input.notes, brief ? briefToNotes(brief, he) : '', pillarNote].filter(Boolean).join(' ');
   const draftArticle = (extra?: string) =>
     generateArticle({
       keyword: input.keyword,
       lang: input.lang,
       context: input.context,
       notes: [baseNotes, extra].filter(Boolean).join(' ') || undefined,
+      template: input.template,
+      coinedTerm: input.coinedTerm,
+      diagram: input.diagram,
     }).catch(() => null);
 
   let article = await draftArticle();
