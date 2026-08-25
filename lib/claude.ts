@@ -1,4 +1,6 @@
 // Claude caller — plain fetch, no SDK. Server-only (reads ANTHROPIC_API_KEY).
+import { clean } from '@/lib/clean-text';
+
 const MODEL = process.env.CONTENT_MODEL || 'claude-sonnet-5';
 
 export async function claude(system: string, user: string, maxTokens = 1200): Promise<string> {
@@ -20,7 +22,7 @@ export async function claude(system: string, user: string, maxTokens = 1200): Pr
   });
   if (!res.ok) throw new Error(`claude_${res.status}`);
   const json = (await res.json()) as { content?: { text?: string }[] };
-  return (json.content?.[0]?.text ?? '').trim();
+  return clean((json.content?.[0]?.text ?? '').trim());
 }
 
 // Parse the first JSON object/array out of a model response (handles ```json fences).
