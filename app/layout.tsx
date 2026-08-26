@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import HelixCommandBar from '@/components/HelixCommandBar';
 
 export const metadata: Metadata = {
   title: 'HELIX Rank — סוכן SEO + GEO',
@@ -10,6 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="he" dir="rtl">
       <body>
+        <HelixCommandBar />
         <nav className="border-b border-black/10 bg-white">
           <div className="max-w-[860px] mx-auto px-5 md:px-8 py-3 flex items-center gap-5 text-[14px]">
             <a href="/" className="font-extrabold text-emerald-600">HELIX Rank</a>

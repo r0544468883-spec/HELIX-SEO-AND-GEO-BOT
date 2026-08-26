@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useFlip } from '@/lib/motion';
 
 type QueryResult = { query: string; engine: string; cited: boolean; competitorsCited: string[] };
 type EnginePresence = { engine: string; cited: number; total: number };
@@ -51,6 +52,16 @@ export default function GeoPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [history, setHistory] = useState<TrendPoint[]>([]);
   const [persisted, setPersisted] = useState<boolean | null>(null);
+
+  // Gap Board sort — rows FLIP to new positions on re-sort (Apple-UX spatial consistency).
+  const [gapSort, setGapSort] = useState<'urgency' | 'az'>('urgency');
+  const sortedGaps = report
+    ? [...report.gaps].sort((a, b) =>
+        gapSort === 'az'
+          ? a.query.localeCompare(b.query, 'he')
+          : a.competitorsCited.length - b.competitorsCited.length)
+    : [];
+  const gapsListRef = useFlip<HTMLDivElement>([gapSort, report]);
 
   // AI referral traffic (GA4)
   const [propertyId, setPropertyId] = useState('');
@@ -319,11 +330,21 @@ export default function GeoPage() {
           </div>
 
           <div className="rounded-2xl border border-black/10 bg-white p-5">
-            <div className="text-[15px] font-bold mb-3">Gap Board — {report.gaps.length} פערים</div>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div className="text-[15px] font-bold">Gap Board — {report.gaps.length} פערים</div>
+              {report.gaps.length > 1 && (
+                <button
+                  onClick={() => setGapSort((s) => (s === 'urgency' ? 'az' : 'urgency'))}
+                  className="shrink-0 rounded-lg border border-black/10 px-3 py-1 text-[12px] font-semibold text-[var(--ink-secondary)] hover:bg-black/5"
+                >
+                  מיון: {gapSort === 'urgency' ? 'לפי דחיפות' : 'א־ב'}
+                </button>
+              )}
+            </div>
             {report.gaps.length === 0 && <p className="text-[14px] text-[var(--ink-secondary)]">אין פערים — אתה מצוטט בכל השאילתות 🎉</p>}
-            <div className="space-y-2">
-              {report.gaps.map((g, i) => (
-                <div key={i} className="flex flex-wrap items-center justify-between gap-2 border-b border-black/5 pb-2">
+            <div ref={gapsListRef} className="space-y-2">
+              {sortedGaps.map((g, i) => (
+                <div key={`${g.query}::${g.engine}`} data-flip-id={`${g.query}::${g.engine}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-black/5 pb-2">
                   <div className="min-w-0">
                     <div className="text-[14px] font-semibold">{g.query}</div>
                     <div className="text-[12px] text-[var(--ink-secondary)]">

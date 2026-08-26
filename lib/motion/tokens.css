@@ -1,0 +1,64 @@
+/**
+ * @helix/motion — design tokens for in-app motion & materials.
+ * Import once at the app root (e.g. in globals.css or main.tsx):  import '@helix/motion/tokens.css'
+ *
+ * Everything is accent-agnostic: components read --hm-accent, which you set per
+ * product (Rank amber, OPS orange, PLUG green, etc.). Global nav/CTA identity
+ * colors are unaffected.
+ */
+:root {
+  /* Per-product accent — OVERRIDE this per app. Defaults to HELIX green. */
+  --hm-accent: #10b981;
+  --hm-scrim: 10, 9, 8;                 /* rgb of the dim scrim */
+  --hm-radius: 20px;
+  --hm-surface: rgba(255, 253, 249, 0.86);
+  --hm-surface-solid: #fffdf9;
+  --hm-border: rgba(28, 27, 25, 0.10);
+  --hm-shadow: 0 10px 40px rgba(28, 27, 25, 0.14), 0 2px 8px rgba(28, 27, 25, 0.08);
+  --hm-blur: 24px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --hm-surface: rgba(32, 30, 27, 0.86);
+    --hm-surface-solid: #201e1b;
+    --hm-border: rgba(255, 255, 255, 0.10);
+    --hm-shadow: 0 12px 44px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Frosted material (skill §12). Content scrolls UNDER it; bright top edge = light on the material. */
+.hm-material {
+  background: var(--hm-surface);
+  backdrop-filter: blur(var(--hm-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--hm-blur)) saturate(180%);
+  border: 1px solid var(--hm-border);
+}
+
+/* Press feedback lives on the press and is instant (skill §1). */
+.hm-pressable {
+  transition: transform 100ms ease-out, filter 100ms ease-out;
+  touch-action: manipulation;
+}
+.hm-pressable[data-pressed='true'] {
+  transform: scale(0.97);
+  filter: brightness(0.96);
+}
+
+.hm-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(var(--hm-scrim), 0);
+  pointer-events: none;
+}
+
+/* Accessibility fallbacks (skill §14). */
+@media (prefers-reduced-transparency: reduce) {
+  .hm-material { background: var(--hm-surface-solid); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-pressable { transition: filter 100ms ease; }
+  .hm-pressable[data-pressed='true'] { transform: none; }
+}
+@media (prefers-contrast: more) {
+  .hm-material { background: var(--hm-surface-solid); border-color: currentColor; }
+}
