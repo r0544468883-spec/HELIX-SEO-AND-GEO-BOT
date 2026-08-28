@@ -4,6 +4,7 @@
 // the REAL list of existing pages, pick internal links and flag cannibalization.
 // Honesty rule (Rank's core): it plans, it does NOT invent stats or sources.
 import { claude, parseJson } from '../../../claude';
+import { withSkills } from '../../../skills/registry';
 import type { Lang, ExistingPage, ResearchBrief } from '../contract';
 
 export async function research(input: {
@@ -37,6 +38,6 @@ Return ONLY JSON: {"angle":"","entities":[],"subQuestions":[],"mustCover":[],"in
     ? `מילת מפתח: "${input.keyword}"${input.context ? `\nהקשר עסקי: ${input.context}` : ''}\n\nדפים קיימים באתר:\n${pagesList}`
     : `Keyword: "${input.keyword}"${input.context ? `\nBusiness context: ${input.context}` : ''}\n\nExisting site pages:\n${pagesList}`;
 
-  const raw = await claude(system, user, 1500);
+  const raw = await claude(withSkills(system, ['seo-geo-pack', 'helix-brand-voice']), user, 1500);
   return parseJson<ResearchBrief>(raw);
 }

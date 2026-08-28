@@ -7,6 +7,7 @@
 // angles, it never invents stats/sources. The proposed coinedTerm is gated later
 // by the Critic — a term only survives if it is real and defensible, not spam.
 import { claude, parseJson } from '../../../claude';
+import { withSkills } from '../../../skills/registry';
 import type { Lang, ExistingPage, ClusterPlan } from '../contract';
 
 export async function planCluster(input: {
@@ -44,7 +45,7 @@ Return ONLY JSON: {"pillarKeyword":"","coinedTerm":null,"angle":"","diagram":"",
     ? `seed: "${input.seedKeyword}"${input.context ? `\nהקשר עסקי: ${input.context}` : ''}\n\nדפים קיימים באתר (הימנע מחפיפה):\n${pagesList}`
     : `seed: "${input.seedKeyword}"${input.context ? `\nBusiness context: ${input.context}` : ''}\n\nExisting site pages (avoid overlap):\n${pagesList}`;
 
-  const raw = await claude(system, user, 1500);
+  const raw = await claude(withSkills(system, ['seo-geo-pack', 'project-orchestration']), user, 1500);
   const plan = parseJson<ClusterPlan>(raw);
   if (!plan || !plan.pillarKeyword) return null;
   // Clamp to the methodology's 4-8 spokes; coerce a blank coined term to null.

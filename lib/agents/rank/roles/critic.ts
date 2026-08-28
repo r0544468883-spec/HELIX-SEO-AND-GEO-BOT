@@ -6,6 +6,7 @@
 // directions — never invent praise, never invent problems. This is what turns a
 // pipeline into a team: the writer no longer grades its own homework.
 import { claude, parseJson } from '../../../claude';
+import { withSkills } from '../../../skills/registry';
 import type { Lang, ResearchBrief, CriticReview } from '../contract';
 
 function stripHtml(html: string): string {
@@ -64,6 +65,6 @@ Return ONLY JSON: {"verdict":"pass|revise|reject","score":0,"factualIssues":[],"
     (he ? 'גוף המאמר:\n' : 'Article body:\n') + body,
   ].filter(Boolean);
 
-  const raw = await claude(system, parts.join('\n\n'), 1600);
+  const raw = await claude(withSkills(system, ['seo-geo-pack', 'qa-verification']), parts.join('\n\n'), 1600);
   return parseJson<CriticReview>(raw);
 }
